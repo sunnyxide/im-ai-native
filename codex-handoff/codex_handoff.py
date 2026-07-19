@@ -429,7 +429,10 @@ def write_report(out_dir: Path, pkg: core.HandoffPackage, prompt: str, result: C
     }
     (out_dir / "report.json").write_text(json.dumps(report_data, indent=2) + "\n", encoding="utf-8")
 
-    remedy_line = f"- remedy: {_REMEDY.get(failure_class, 'see events.jsonl / codex.diff for detail')}\n" if not ok else ""
+    # failure_class is str | None; dict.get(None, default) already returns
+    # the default at runtime, so `failure_class or ""` is behavior-identical
+    # and gives Pyright a str key.
+    remedy_line = f"- remedy: {_REMEDY.get(failure_class or '', 'see events.jsonl / codex.diff for detail')}\n" if not ok else ""
     md = (
         "# Codex handoff report\n\n"
         "## What happened\n"
@@ -501,7 +504,8 @@ def _latest_report(repo: Path) -> tuple[Path, dict] | None:
 
 
 def _short_summary(data: dict, report_json_path: Path) -> str:
-    codex = data.get("codex") if isinstance(data.get("codex"), dict) else {}
+    raw_codex = data.get("codex")
+    codex = raw_codex if isinstance(raw_codex, dict) else {}
     outcome = "succeeded" if codex.get("ok") else f"failed ({codex.get('failure_class', 'unknown')})"
     lines = [
         "codex-handoff: a report from a previous session is waiting for you.",

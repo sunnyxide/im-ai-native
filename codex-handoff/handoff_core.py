@@ -90,6 +90,11 @@ def classify_record(record: Mapping) -> LimitSignal | None:
     path), or for malformed input (never raises on bad data — this runs
     inside hooks, which must never crash on a corrupt line).
     """
+    # Defensive: `record` is typed Mapping for callers, but this runs on raw
+    # json.loads() output from transcript lines, which can be any JSON value
+    # (str, list, int, ...). Pyright sees this branch as unreachable against
+    # the declared type; at runtime it is the guard that keeps malformed
+    # lines from raising.
     if not isinstance(record, Mapping):
         return None
     if record.get("isApiErrorMessage") is not True:
@@ -215,11 +220,13 @@ def _extract_user_text(content: object) -> str | None:
         stripped = content.strip()
         return stripped or None
     if isinstance(content, list):
-        texts = [
-            block.get("text")
-            for block in content
-            if isinstance(block, Mapping) and block.get("type") == "text" and isinstance(block.get("text"), str)
-        ]
+        texts: list[str] = []
+        for block in content:
+            if not isinstance(block, Mapping) or block.get("type") != "text":
+                continue
+            text = block.get("text")
+            if isinstance(text, str):
+                texts.append(text)
         joined = "\n".join(texts).strip()
         return joined or None
     return None
@@ -401,6 +408,11 @@ def redact(text: str) -> str:
     and key=value where key matches (api[_-]?key|token|secret|password).
     Replacement token is «redacted». Never raises; non-str input passes
     through unchanged (guarded at the caller, but defensive here too)."""
+    # Defensive: `text` is typed str for callers, but redact() runs on codex
+    # subprocess output paths where a caller could pass a non-str by mistake
+    # (e.g. a None from a dict.get()) — this guard keeps that from raising
+    # inside a hook. Pyright treats it as unreachable against the declared
+    # type; the type: ignore is for the intentionally-loose return.
     if not isinstance(text, str):
         return text  # type: ignore[return-value]
 

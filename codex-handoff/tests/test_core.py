@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import handoff_core as core  # noqa: E402
 
 
-def _error_record(text, *, api_error_status=429, session_id="175f661e-x",
+def _error_record(text, *, api_error_status: int | None = 429, session_id="175f661e-x",
                    timestamp="2026-06-13T20:45:16.716Z"):
     """Build a record in the verified isApiErrorMessage shape (DESIGN §1.1)."""
     return {

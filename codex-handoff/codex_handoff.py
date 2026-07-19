@@ -29,7 +29,7 @@ from pathlib import Path
 
 # Path-safe import: this directory's name has a hyphen, so it isn't a package.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import handoff_core as core  # noqa: E402
+import handoff_core as core  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 
 class HandoffError(Exception):

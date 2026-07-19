@@ -22,8 +22,8 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import codex_handoff as invoker  # noqa: E402
-import handoff_core as core  # noqa: E402
+import codex_handoff as invoker  # noqa: E402  # pyright: ignore[reportMissingImports]
+import handoff_core as core  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 SCRIPT = Path(__file__).resolve().parent.parent / "codex_handoff.py"
 

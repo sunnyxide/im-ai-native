@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-import handoff_core as core  # noqa: E402
+import handoff_core as core  # noqa: E402  # pyright: ignore[reportMissingImports]
 
 
 def _error_record(text, *, api_error_status: int | None = 429, session_id="175f661e-x",

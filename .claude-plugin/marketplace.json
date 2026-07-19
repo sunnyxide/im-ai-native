@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "im-ai-native",
+  "description": "Plain-first, language-matched output for AI-native builders — plus model-tier routing that doesn't burn your usage cap.",
+  "owner": {
+    "name": "sunnyxide"
+  },
+  "plugins": [
+    {
+      "name": "im-ai-native",
+      "description": "Shape Claude Code output plain-first and complete: answer in the question's language, gloss jargon the first time, lead with the decision, cut redundancy but never substance.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

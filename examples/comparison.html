@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>im-ai-native — 3-way output comparison</title>
+<style>
+  :root{
+    --paper:#f6f7f9; --surface:#fff; --surface-2:#fbfcfd;
+    --ink:#1b2127; --ink-soft:#55606c; --ink-faint:#8a94a0;
+    --line:#e4e8ec; --line-soft:#eef1f4;
+    --accent:#0e7c70; --accent-soft:#e0f1ee; --accent-line:#bfe4de;
+    --caution:#a06a08; --caution-soft:#f7edd6; --caution-line:#ecd9a6;
+    --muted:#6b7480; --muted-soft:#edeff2;
+    --sans:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Segoe UI",system-ui,sans-serif;
+    --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --paper:#0e1216; --surface:#151b21; --surface-2:#111820;
+    --ink:#e6ebf0; --ink-soft:#9aa5b1; --ink-faint:#6b7580;
+    --line:#232c34; --line-soft:#1b232a;
+    --accent:#3fbfae; --accent-soft:#0f2e2a; --accent-line:#1c4a44;
+    --caution:#d6a13e; --caution-soft:#2c2410; --caution-line:#4a3d18;
+    --muted:#8592a0; --muted-soft:#1b232a;
+  }}
+  :root[data-theme="light"]{
+    --paper:#f6f7f9; --surface:#fff; --surface-2:#fbfcfd;
+    --ink:#1b2127; --ink-soft:#55606c; --ink-faint:#8a94a0;
+    --line:#e4e8ec; --line-soft:#eef1f4;
+    --accent:#0e7c70; --accent-soft:#e0f1ee; --accent-line:#bfe4de;
+    --caution:#a06a08; --caution-soft:#f7edd6; --caution-line:#ecd9a6;
+    --muted:#6b7480; --muted-soft:#edeff2;
+  }
+  :root[data-theme="dark"]{
+    --paper:#0e1216; --surface:#151b21; --surface-2:#111820;
+    --ink:#e6ebf0; --ink-soft:#9aa5b1; --ink-faint:#6b7580;
+    --line:#232c34; --line-soft:#1b232a;
+    --accent:#3fbfae; --accent-soft:#0f2e2a; --accent-line:#1c4a44;
+    --caution:#d6a13e; --caution-soft:#2c2410; --caution-line:#4a3d18;
+    --muted:#8592a0; --muted-soft:#1b232a;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.65;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1260px;margin:0 auto;padding:clamp(20px,4vw,56px) clamp(16px,4vw,40px) 88px;}
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:8px;}
+  .eyebrow{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700;margin:0;}
+  .langtoggle{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--surface);}
+  .langtoggle button{appearance:none;border:0;background:transparent;color:var(--ink-soft);font:inherit;font-size:13px;font-weight:600;padding:7px 15px;cursor:pointer;}
+  .langtoggle button[aria-pressed="true"]{background:var(--accent);color:#fff;}
+  .langtoggle button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  h1{font-size:clamp(26px,4.4vw,40px);line-height:1.12;font-weight:800;letter-spacing:-.02em;margin:6px 0 14px;text-wrap:balance;}
+  .lede{font-size:clamp(15px,1.7vw,17px);color:var(--ink-soft);max-width:70ch;margin:0 0 6px;}
+  .lede strong{color:var(--ink);font-weight:700;}
+  .matrix{margin:30px 0 8px;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface);}
+  .matrix-scroll{overflow-x:auto;}
+  table{border-collapse:collapse;width:100%;min-width:640px;font-size:13.5px;}
+  thead th{background:var(--surface-2);text-align:left;padding:12px 16px;font-weight:600;color:var(--ink-soft);border-bottom:1px solid var(--line);white-space:nowrap;}
+  tbody td{padding:12px 16px;border-bottom:1px solid var(--line-soft);vertical-align:top;}
+  tbody tr:last-child td{border-bottom:0;}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:8px;vertical-align:middle;}
+  .dot--muted{background:var(--muted);}.dot--caution{background:var(--caution);}.dot--accent{background:var(--accent);}
+  .yes{color:var(--accent);font-weight:600;}.no{color:var(--caution);font-weight:600;}.meh{color:var(--ink-faint);}
+  .candidate{margin-top:52px;}
+  .cand-head{border-top:2px solid var(--ink);padding-top:16px;margin-bottom:20px;}
+  .cand-idx{font-family:var(--mono);font-size:12px;color:var(--ink-faint);letter-spacing:.04em;}
+  .cand-title{font-size:clamp(18px,2.4vw,24px);font-weight:800;letter-spacing:-.01em;margin:4px 0 10px;text-wrap:balance;}
+  .cand-q{background:var(--muted-soft);border:1px solid var(--line);border-radius:9px;padding:10px 14px;font-size:14px;}
+  .cand-q .lbl{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-faint);font-weight:700;margin-right:8px;}
+  .cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start;margin-top:16px;}
+  @media (max-width:1000px){.cols{grid-template-columns:1fr;}}
+  .col{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden;}
+  .col--original{border-top:3px solid var(--muted);}
+  .col--brevity{border-top:3px solid var(--caution);}
+  .col--native{border-top:3px solid var(--accent);box-shadow:0 1px 0 var(--accent-line),0 12px 30px -22px rgba(14,124,112,.5);}
+  .col-head{padding:14px 16px 12px;border-bottom:1px solid var(--line-soft);}
+  .col-label{display:inline-flex;align-items:center;gap:7px;font-size:11px;letter-spacing:.11em;text-transform:uppercase;font-weight:700;}
+  .col--original .col-label{color:var(--muted);}
+  .col--brevity .col-label{color:var(--caution);}
+  .col--native .col-label{color:var(--accent);}
+  .badge{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:6px;margin-left:6px;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line);}
+  .col-verdict{margin:9px 0 0;font-size:12.5px;color:var(--ink-soft);line-height:1.5;}
+  .col-body{padding:16px;font-size:13.5px;line-height:1.62;}
+  .col-body p{margin:0 0 11px;}.col-body p:last-child{margin-bottom:0;}
+  .col-body .lead{font-weight:700;color:var(--ink);}
+  .col-body ul,.col-body ol{margin:0 0 11px;padding-left:20px;}
+  .col-body li{margin:0 0 6px;}
+  .col-body code{font-family:var(--mono);font-size:.86em;background:var(--muted-soft);border:1px solid var(--line-soft);border-radius:5px;padding:1px 5px;}
+  mark.gloss{background:var(--accent-soft);color:inherit;padding:0 3px;border-radius:4px;box-decoration-break:clone;-webkit-box-decoration-break:clone;}
+  .note{margin-top:13px;border-radius:9px;padding:11px 13px;font-size:12px;line-height:1.5;}
+  .note--loss{background:var(--caution-soft);border:1px solid var(--caution-line);}
+  .note--loss b{color:var(--caution);}
+  .note--kept{background:var(--accent-soft);border:1px solid var(--accent-line);}
+  .note--kept b{color:var(--accent);}
+  footer{margin-top:64px;padding-top:22px;border-top:1px solid var(--line);color:var(--ink-faint);font-size:12.5px;line-height:1.6;}
+  footer a{color:var(--accent);text-decoration:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <p class="eyebrow" id="eyebrow"></p>
+    <div class="langtoggle" role="group" aria-label="language">
+      <button id="btn-en" aria-pressed="true" onclick="setLang('en')">EN</button>
+      <button id="btn-ko" aria-pressed="false" onclick="setLang('ko')">한국어</button>
+    </div>
+  </div>
+  <h1 id="h1"></h1>
+  <p class="lede" id="lede"></p>
+
+  <div class="matrix"><div class="matrix-scroll"><table>
+    <thead><tr id="mhead"></tr></thead>
+    <tbody id="mbody"></tbody>
+  </table></div></div>
+
+  <div id="cases"></div>
+
+  <footer id="footer"></footer>
+</div>
+
+<script>
+/* ---- shared sample outputs (the demo subject — same in both UI languages) ---- */
+const S = {
+  c1: {
+    qEn: "how does the sync job avoid losing records when it paginates? explain briefly",
+    qKo: "동기화 작업이 페이지를 넘길 때 레코드를 안 놓치게 어떻게 하는지 간단히 설명해줘",
+    qLangLabel: "EN",
+    original: `<p>The sync job guards against record loss through a combination of full pagination on each incremental run and a lookback window layered on top of the cursor mechanism. On every run it paginates through the recent record set up to a configured cap, and rather than relying solely on the persisted cursor — which can skip rows that were written with an earlier timestamp or arrived late — it also performs a 5-minute lookback that re-scans recent history, deduplicating against the primary key so that idempotency is preserved. The cursor is only advanced after a clean pass completes, ensuring that a partial failure does not lose position. On the very first backfill the job samples a subset of rows to bound the initial load, after which every scheduled run performs the full read described above.</p>`,
+    brevity: `<p class="lead">No record loss: full pagination + a 5-min lookback.</p>
+<ul>
+<li>Paginates to a 2,000-row cap per run, warns on cap-hit — no silent truncation.</li>
+<li>A 5-min lookback re-scans recent rows each run, deduped by primary key, so late/back-dated rows still land.</li>
+<li>The cursor only advances after a clean pass.</li>
+</ul>
+<p><code>commit a1b2c3d</code></p>`,
+    native: `<p class="lead">It won't drop records because each run reads every page to the end, then re-checks the last 5 minutes on top of that.</p>
+<ul>
+<li>Each run pages through the full recent set — capped at 2,000 rows, and if it hits the cap it logs a warning instead of quietly cutting off.</li>
+<li>Trusting only the <mark class="gloss">"where I left off" marker (the cursor)</mark> would miss rows written late — so every run also re-scans the last 5 minutes and <mark class="gloss">skips anything already saved (matched by primary key)</mark>, so nothing double-counts and nothing slips through.</li>
+<li>Only the very first full load samples a subset (500 rows); every scheduled run after that is the full read above.</li>
+</ul>
+<p><code>commit a1b2c3d</code></p>`
+  },
+  c2: {
+    qEn: "summarize this week's merged PRs that weren't announced in chat",
+    qKo: "이번 주에 머지됐는데 챗에 공지 안 된 PR들 정리해줘",
+    qLangLabel: "KO",
+    original: `<p>Looking across the repositories, there were several pull requests merged this week that do not appear to have a corresponding announcement in the team chat. To give the full picture: PR #141 renamed the output-style rule file and updated its references; PR #142 corrected a fallback that still pointed at a retired model id, which would have produced errors on that path; PR #143 added a guard hook that prevents helper agents from silently inheriting a premium model tier; PR #144 made the outbound webhook retry-safe so that a transient failure no longer drops the event; and PR #145 added an SSL fallback so the crawler can still connect when a certificate handshake fails. Each of these is independent and small enough to review quickly.</p>`,
+    brevity: `<p class="lead">3 merged PRs went out without a chat announcement.</p>
+<ul>
+<li>#141 — renamed the output-style rule file</li>
+<li>#142 — fixed a fallback pointing at a retired model</li>
+<li>#143 — added the model-guard hook</li>
+</ul>`,
+    native: `<p class="lead">5 merged PRs went out without a chat announcement (grouped):</p>
+<ul>
+<li><b>Voice / rules (2)</b> — #141 renamed the output-style rule, #143 added a hook that <mark class="gloss">stops helper agents from silently using the expensive model</mark>.</li>
+<li><b>Model config (2)</b> — #142 fixed a fallback still pointing at a <mark class="gloss">retired model id (would 404 on that path)</mark>, #144 made the outbound webhook <mark class="gloss">retry-safe (a blip no longer drops the event)</mark>.</li>
+<li><b>Reliability (1)</b> — #145 added a fallback so the crawler still connects when a <mark class="gloss">certificate handshake fails (SSL)</mark>.</li>
+</ul>`
+  },
+  c3: {
+    qEn: "who knows the deploy setup best? answer in Korean",
+    qKo: "우리 배포 세팅 누가 제일 잘 알아? 한국어로 답해줘",
+    qLangLabel: "EN→KO",
+    original: `<p>Based on commit history and ownership, the person with the most context on the deployment setup is Alex. Alex configured the container hosting on the managed platform, set up the scheduled jobs that run on the build machine, and established the private network mesh between the machines. Alex is also the author of the majority of recent deployment-related pull requests, which indicates ongoing ownership of that surface area.</p>`,
+    brevity: `<p class="lead">Alex knows the deploy setup best.</p>
+<ul>
+<li>Set up Cloud Run, the cron jobs, and the VPN mesh</li>
+<li>Author of most recent deploy PRs</li>
+</ul>`,
+    native: `<p class="lead">배포는 <b>Alex</b>가 제일 많이 압니다. <span style="color:var(--ink-faint);font-size:12px">(질문이 한국어로 답해달라고 해서 한국어로 답합니다)</span></p>
+<ul>
+<li>서버를 올려 돌리는 것(관리형 플랫폼의 Cloud Run), 빌드 머신에서 도는 <mark class="gloss">예약 작업(cron)</mark>, 기기 사이의 <mark class="gloss">사설망(VPN mesh)</mark>을 다 Alex가 세팅.</li>
+<li>최근 배포 관련 PR 대부분이 Alex가 올린 것.</li>
+</ul>`
+  }
+};
+
+const DATA = {
+  en: {
+    dir: "ltr",
+    eyebrow: "im-ai-native · output comparison",
+    h1: "Same answer, three ways",
+    lede: "Three realistic questions, rewritten <strong>verbose original</strong> → <strong>generic brevity ruleset</strong> → <strong>im-ai-native</strong>. The test isn't \"is it shorter\" — it's \"does it land on first read <strong>and</strong> keep every fact you'd act on.\" Examples are generic/illustrative.",
+    mhead: ["Style","Length","Glosses jargon","Keeps substance","Decision position","One-line verdict"],
+    mrows: [
+      ["muted","Verbose original","long","n/a (source)","yes|kept","no|buried at end","All the info, but tiring and the point is buried"],
+      ["caution","Generic brevity","short","no|not really","no|some lost","yes|front","Action moved up, but jargon stays and facts get dropped"],
+      ["accent","im-ai-native","medium","yes|yes","yes|all","yes|front","Plain-first, jargon glossed, zero substance lost"]
+    ],
+    labels: {q:"Question", original:"Verbose original", brevity:"Generic brevity", native:"im-ai-native", rec:"pick", changed:"What changed", dropped:"Dropped", kept:"Kept"},
+    cases: [
+      { idx:"CASE 01", title:"A technical question — glossing", q:S.c1.qEn, qlang:S.c1.qLangLabel,
+        vOriginal:"Every fact is here, but mechanism-first and jargon-dense — you re-read to extract the point.",
+        vBrevity:"Tight and action-first, but leaves cursor / idempotent / pagination raw, and drops one fact to fit 3 bullets.",
+        vNative:"Same tightness, jargon glossed to what it does, and restores the dropped fact.",
+        dropped:"The brevity version drops the \"first full load only samples a subset\" fact to stay at 3 bullets.",
+        kept:"Glosses cursor / idempotent / pagination, and keeps all 4 facts — including first-run sampling." },
+      { idx:"CASE 02", title:"A list question — tight ≠ thin", q:S.c2.qEn, qlang:S.c2.qLangLabel,
+        vOriginal:"All 5 PRs, but as one dense paragraph you have to parse.",
+        vBrevity:"Caps at 3 bullets and silently drops 2 real PRs — substance lost to look short.",
+        vNative:"Keeps all 5 by grouping into 3 themed bullets, and glosses each fix.",
+        dropped:"Two merged PRs (#144, #145) vanish — the reader never learns they shipped.",
+        kept:"All 5 PRs survive via grouping; \"retry-safe\", \"SSL\", \"model-guard\" glossed to plain meaning." },
+      { idx:"CASE 03", title:"A who-knows question — plain + language match", q:S.c3.qEn, qlang:S.c3.qLangLabel,
+        vOriginal:"Answers in English even though the question asked for Korean — and leaves the infra terms raw.",
+        vBrevity:"Short, but still English (ignores the Korean request) and jargon stays raw.",
+        vNative:"Answers in Korean as requested, glosses Cloud Run / cron / VPN, keeps the citation basis.",
+        dropped:"Both other versions ignore the explicit \"answer in Korean\" — wrong output language.",
+        kept:"Respects the requested language, glosses infra terms, keeps who + the evidence (PRs/ownership)." }
+    ],
+    footer: 'Examples are generic and illustrative — no real client, project, or person. Full rules: the <code>im-ai-native</code> skill. Inspired by <a href="https://github.com/ayghri/i-have-adhd">i-have-adhd</a>.'
+  },
+  ko: {
+    dir: "ltr",
+    eyebrow: "im-ai-native · 출력 비교",
+    h1: "같은 답변, 세 가지 방식",
+    lede: "현실적인 질문 3개를 <strong>장황한 원본</strong> → <strong>일반 brevity 룰셋</strong> → <strong>im-ai-native</strong>로 다시 씀. 기준은 \"더 짧은가\"가 아니라 \"첫 읽기에 꽂히면서 <strong>행동에 필요한 사실을 다 남겼는가</strong>\". 예시는 일반화·가상입니다.",
+    mhead: ["스타일","길이","용어 풀이","실체 보존","결정 위치","한 줄 평"],
+    mrows: [
+      ["muted","장황한 원본","길다","해당없음(원문)","yes|전부","no|맨 끝 매장","정보는 다 있지만 피곤하고 요점이 묻힘"],
+      ["caution","일반 brevity","짧다","no|거의 안 함","no|일부 손실","yes|앞","액션은 앞으로, 그러나 용어 그대로 + 사실 누락"],
+      ["accent","im-ai-native","중간","yes|함","yes|전부","yes|앞","직관 먼저, 용어 풀이, 실체 손실 0"]
+    ],
+    labels: {q:"질문", original:"장황한 원본", brevity:"일반 brevity", native:"im-ai-native", rec:"추천", changed:"무엇이 달라졌나", dropped:"잘려나감", kept:"보존됨"},
+    cases: [
+      { idx:"CASE 01", title:"기술 질문 — 용어 풀이", q:S.c1.qEn, qlang:S.c1.qLangLabel,
+        vOriginal:"모든 사실이 있지만 메커니즘 먼저 + 용어 밀집 — 요점을 뽑으려 다시 읽게 됨.",
+        vBrevity:"짧고 액션 먼저지만 cursor·idempotent·pagination이 날것, 3불릿 맞추려 사실 하나 누락.",
+        vNative:"같은 간결함에, 용어를 '뭘 하는지'로 풀고, 누락됐던 사실을 되살림.",
+        dropped:"brevity 버전은 3불릿 유지하려 \"최초 1회만 일부 샘플\" 사실을 버림.",
+        kept:"cursor·idempotent·pagination을 풀고, 4개 사실 전부 유지 — 최초 샘플링 포함." },
+      { idx:"CASE 02", title:"목록 질문 — 짧다 ≠ 얇다", q:S.c2.qKo, qlang:S.c2.qLangLabel,
+        vOriginal:"PR 5건 다 있지만 파싱해야 하는 한 덩어리 문단.",
+        vBrevity:"3불릿 상한 → 진짜 PR 2건을 소리 없이 버림 — 짧아 보이려 실체 손실.",
+        vNative:"3개 주제로 묶어 5건을 다 살리고, 각 수정을 풀어줌.",
+        dropped:"머지된 PR 2건(#144, #145)이 사라져 — 배포된 걸 독자가 영영 모름.",
+        kept:"묶기로 5건 다 생존; \"retry-safe\"·\"SSL\"·\"model-guard\"를 일상어로." },
+      { idx:"CASE 03", title:"who-knows 질문 — 평이함 + 언어 매칭", q:S.c3.qEn, qlang:S.c3.qLangLabel,
+        vOriginal:"질문이 한국어로 답해달라 했는데 영어로 답 — 게다가 인프라 용어 날것.",
+        vBrevity:"짧지만 여전히 영어(한국어 요청 무시), 용어도 그대로.",
+        vNative:"요청대로 한국어로 답, Cloud Run·cron·VPN을 풀고, 근거를 유지.",
+        dropped:"다른 두 버전은 \"한국어로\" 요청을 무시 — 출력 언어가 틀림.",
+        kept:"요청 언어 준수, 인프라 용어 풀이, 누구+근거(PR/오너십)를 유지." }
+    ],
+    footer: '예시는 일반화·가상입니다 — 실제 클라이언트·프로젝트·인물 없음. 전체 규칙: <code>im-ai-native</code> 스킬. <a href="https://github.com/ayghri/i-have-adhd">i-have-adhd</a>에서 영감.'
+  }
+};
+
+function cell(v){
+  if(v.indexOf("|")>-1){var p=v.split("|");var cls=p[0]==="yes"?"yes":(p[0]==="no"?"no":"meh");return '<span class="'+cls+'">'+(p[0]==="yes"?"✅ ":(p[0]==="no"?"⚠️ ":""))+p[1]+'</span>';}
+  return v;
+}
+
+function render(lang){
+  var d=DATA[lang];
+  document.documentElement.lang = lang;
+  document.getElementById("eyebrow").textContent=d.eyebrow;
+  document.getElementById("h1").textContent=d.h1;
+  document.getElementById("lede").innerHTML=d.lede;
+
+  var mh="";for(var i=0;i<d.mhead.length;i++){mh+="<th>"+d.mhead[i]+"</th>";}
+  document.getElementById("mhead").innerHTML=mh;
+  var mb="";
+  for(var r=0;r<d.mrows.length;r++){var row=d.mrows[r];
+    mb+="<tr><td style='font-weight:700;white-space:nowrap'><span class='dot dot--"+row[0]+"'></span>"+row[1]+"</td>";
+    for(var c=2;c<row.length;c++){mb+="<td>"+cell(row[c])+"</td>";}
+    mb+="</tr>";
+  }
+  document.getElementById("mbody").innerHTML=mb;
+
+  var L=d.labels, keys=["c1","c2","c3"], out="";
+  for(var k=0;k<d.cases.length;k++){
+    var cs=d.cases[k], smp=S[keys[k]];
+    out+='<section class="candidate">'
+      +'<div class="cand-head"><div class="cand-idx">'+cs.idx+'</div>'
+      +'<h2 class="cand-title">'+cs.title+'</h2>'
+      +'<div class="cand-q"><span class="lbl">'+L.q+' ('+cs.qlang+')</span>'+cs.q+'</div></div>'
+      +'<div class="cols">'
+      +col("original",L.original,"",cs.vOriginal,smp.original,"")
+      +col("brevity",L.brevity,"",cs.vBrevity,smp.brevity,'<div class="note note--loss"><b>'+L.dropped+':</b> '+cs.dropped+'</div>')
+      +col("native",L.native,L.rec,cs.vNative,smp.native,'<div class="note note--kept"><b>'+L.kept+':</b> '+cs.kept+'</div>')
+      +'</div></section>';
+  }
+  document.getElementById("cases").innerHTML=out;
+  document.getElementById("footer").innerHTML=d.footer;
+
+  document.getElementById("btn-en").setAttribute("aria-pressed", lang==="en");
+  document.getElementById("btn-ko").setAttribute("aria-pressed", lang==="ko");
+}
+function col(kind,label,badge,verdict,body,note){
+  var b=badge?' <span class="badge">'+badge+'</span>':'';
+  return '<article class="col col--'+kind+'"><div class="col-head"><span class="col-label">'
+    +'<span class="dot dot--'+(kind==="original"?"muted":(kind==="brevity"?"caution":"accent"))+'"></span>'+label+b+'</span>'
+    +'<p class="col-verdict">'+verdict+'</p></div>'
+    +'<div class="col-body">'+body+note+'</div></article>';
+}
+function setLang(l){render(l);try{localStorage.setItem("iman_lang",l);}catch(e){}}
+var saved="en";try{var s=localStorage.getItem("iman_lang");if(s)saved=s;}catch(e){}
+if(saved!=="en"&&saved!=="ko")saved="en";
+render(saved);
+</script>
+</body>
+</html>

@@ -621,6 +621,93 @@ def cmd_auto(args: argparse.Namespace) -> int:
         return 0
 
 
+_CALIBRATION_FIELDS = ("input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens", "records")
+_CALIBRATE_READ_BYTES = 20_000_000  # generous bound for a full-history advisory scan
+
+
+def _all_transcript_files() -> list[Path]:
+    """Every *.jsonl transcript across every project (usage limits are account-wide, not per-repo — DESIGN §3)."""
+    projects_dir = Path.home() / ".claude" / "projects"
+    return sorted(projects_dir.glob("*/*.jsonl")) if projects_dir.is_dir() else []
+
+
+def _record_timestamp(record: dict) -> datetime | None:
+    raw_ts = record.get("timestamp")
+    return _parse_iso(raw_ts) if isinstance(raw_ts, str) else None
+
+
+def _load_calibration() -> core.UsageTotals | None:
+    """None on any missing/malformed calibration.json — optional advisory data, never a precondition."""
+    try:
+        raw = json.loads((_state_home() / "calibration.json").read_text(encoding="utf-8"))
+        data = raw if isinstance(raw, dict) else {}
+        raw_median = data.get("median")
+        median = raw_median if isinstance(raw_median, dict) else {}
+        if not median:
+            return None
+        return core.UsageTotals(**{f: int(median.get(f, 0)) for f in _CALIBRATION_FIELDS})
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return None
+
+
+def _median_int(values: list[int]) -> int:
+    if not values:
+        return 0
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    return ordered[mid] if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) // 2
+
+
+def _save_calibration(windows: list[core.UsageTotals]) -> Path:
+    median = {f: _median_int([getattr(w, f) for w in windows]) for f in _CALIBRATION_FIELDS}
+    data = {"schema": 1, "computed_at_utc": _utc_now_iso(), "windows": len(windows), "median": median}
+    path = _state_home() / "calibration.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def _run_calibration() -> Path:
+    """Full scan for limit_hit records; for each hit, sums the preceding 5h window's usage, stores the median.
+    ~100+ project dirs -> can take tens of seconds; progress every 20 files so a slow scan doesn't look like a hang."""
+    files = _all_transcript_files()
+    total = len(files)
+    windows: list[core.UsageTotals] = []
+    for i, path in enumerate(files, start=1):
+        if i % 20 == 0 or i == total:
+            print(f"  calibrating... {i}/{total} scanned, {len(windows)} limit-hit window(s) so far", file=sys.stderr)
+        records = read_transcript_tail(path, max_bytes=_CALIBRATE_READ_BYTES)
+        for record in records:
+            signal = core.classify_record(record)
+            if signal is None or signal.kind != "limit_hit":
+                continue
+            hit_time = _parse_iso(signal.timestamp)
+            if hit_time is None:
+                continue
+            preceding = [r for r in records
+                         if isinstance(r, dict) and (ts := _record_timestamp(r)) is not None and ts <= hit_time]
+            windows.append(core.sum_usage(preceding, since_utc=hit_time - timedelta(hours=5)))
+    return _save_calibration(windows)
+
+
+def cmd_check(args: argparse.Namespace) -> int:
+    """Advisory burn report for the current 5h window (DESIGN §3, §4.3); NEVER triggers a handoff."""
+    if args.calibrate:
+        print(f"calibration saved: {_run_calibration()}", file=sys.stderr)
+    since = datetime.now(timezone.utc) - timedelta(hours=5)
+    records: list[dict] = []
+    for path in _all_transcript_files():
+        try:
+            mtime = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        except OSError:
+            continue
+        if mtime >= since:
+            records.extend(read_transcript_tail(path, max_bytes=_CALIBRATE_READ_BYTES))
+
+    print(core.format_burn_report(core.sum_usage(records, since_utc=since), _load_calibration()))
+    return 0
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     repo = Path(args.repo).expanduser().resolve()
     latest = _latest_report(repo)
@@ -673,6 +760,10 @@ def _build_parser() -> argparse.ArgumentParser:
     auto_p.add_argument("--from-hook", action="store_true", help="read the hook JSON from stdin")
     auto_p.add_argument("--dry-run", action="store_true", help="print the Decision instead of spawning (for tests)")
 
+    check_p = sub.add_parser("check", help="advisory burn report for the current 5h window (never triggers a handoff)")
+    check_p.add_argument("--repo", default=".", help="accepted for CLI symmetry with now/report; unused (usage is account-wide)")
+    check_p.add_argument("--calibrate", action="store_true", help="rescan transcript history and refresh calibration.json (can take tens of seconds)")
+
     report_p = sub.add_parser("report", help="print the latest handoff report")
     report_p.add_argument("--repo", default=".", help="target repo (default: cwd)")
     report_p.add_argument("--latest", action="store_true", help="print the newest report for this repo (default)")
@@ -693,6 +784,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "now":
             return cmd_now(args)
+        if args.command == "check":
+            return cmd_check(args)
         if args.command == "report":
             return cmd_report(args)
     except (HandoffError, ValueError) as e:

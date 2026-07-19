@@ -229,5 +229,64 @@ class RedactTests(unittest.TestCase):
         self.assertIn("normal prose sentence about nothing sensitive", result)
 
 
+class SumUsageTests(unittest.TestCase):
+    def test_sum_usage_window_filter(self):
+        since = datetime(2026, 7, 20, 10, 0, 0, tzinfo=timezone.utc)
+
+        def _usage_record(ts, *, record_type="assistant", usage=None):
+            message = {"usage": usage} if usage is not None else {}
+            return {"type": record_type, "timestamp": ts, "message": message}
+
+        in_window = _usage_record(
+            "2026-07-20T10:05:00.000Z",
+            usage={"input_tokens": 100, "output_tokens": 50, "cache_creation_input_tokens": 10, "cache_read_input_tokens": 5},
+        )
+        also_in_window = _usage_record(
+            "2026-07-20T14:59:00.000Z",
+            usage={"input_tokens": 200, "output_tokens": 75, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 20},
+        )
+        before_window = _usage_record(  # older than since_utc -> excluded
+            "2026-07-20T09:59:00.000Z",
+            usage={"input_tokens": 9999, "output_tokens": 9999, "cache_creation_input_tokens": 9999, "cache_read_input_tokens": 9999},
+        )
+        non_assistant = _usage_record(  # wrong record type -> excluded
+            "2026-07-20T11:00:00.000Z", record_type="user",
+            usage={"input_tokens": 500, "output_tokens": 500, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0},
+        )
+        no_usage_block = {"type": "assistant", "timestamp": "2026-07-20T11:30:00.000Z", "message": {}}
+        bad_timestamp = {"type": "assistant", "timestamp": "not-a-date", "message": {"usage": {"input_tokens": 1}}}
+        malformed_top_level = "not even a dict"
+
+        totals = core.sum_usage(
+            [in_window, also_in_window, before_window, non_assistant, no_usage_block, bad_timestamp, malformed_top_level],
+            since_utc=since,
+        )
+
+        self.assertEqual(totals.records, 2)
+        self.assertEqual(totals.input_tokens, 300)
+        self.assertEqual(totals.output_tokens, 125)
+        self.assertEqual(totals.cache_creation_tokens, 10)
+        self.assertEqual(totals.cache_read_tokens, 25)
+
+
+class FormatBurnReportTests(unittest.TestCase):
+    def test_format_burn_report_with_and_without_calibration(self):
+        current = core.UsageTotals(input_tokens=1000, output_tokens=500, cache_creation_tokens=200, cache_read_tokens=300, records=4)
+
+        without_calibration = core.format_burn_report(current, None)
+        self.assertIn("estimate", without_calibration.lower())
+        self.assertIn("not public", without_calibration.lower())
+        self.assertIn("1,000", without_calibration)
+        self.assertNotIn("median", without_calibration.lower())
+
+        calibration = core.UsageTotals(input_tokens=2000, output_tokens=1000, cache_creation_tokens=400, cache_read_tokens=600, records=8)
+        with_calibration = core.format_burn_report(current, calibration)
+        self.assertIn("estimate", with_calibration.lower())
+        self.assertIn("not public", with_calibration.lower())
+        self.assertIn("median", with_calibration.lower())
+        self.assertIn("%", with_calibration)
+        self.assertIn("50%", with_calibration)  # 2000 current-total / 4000 calibration-total
+
+
 if __name__ == "__main__":
     unittest.main()

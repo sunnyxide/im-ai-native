@@ -8,7 +8,9 @@ Four groups, matching DESIGN.md §4.1:
   1. detection      — classify_record, decide
   2. context packaging — extract_task_context, build_package, render_prompt
   3. hygiene        — redact
-  4. burn estimation — Phase 4, NOT implemented here yet (do not stub it).
+  4. burn estimation — sum_usage, format_burn_report (advisory only; see §3
+     of DESIGN.md — there is no public cap formula, so this is always
+     labeled an estimate, never treated as a hard signal).
 
 All dataclasses are frozen; nothing here ever mutates an input. Where a
 modified copy is needed (build_package truncating a diff), it is built with
@@ -407,3 +409,103 @@ def redact(text: str) -> str:
         result = pattern.sub(_REDACTED, result)
     result = _KV_SECRET_PATTERN.sub(lambda m: f"{m.group(1)}{m.group(2)}{_REDACTED}", result)
     return result
+
+
+# --------------------------------------------------------------------------
+# burn estimation (advisory, Phase 4) — DESIGN §3: there is no public cap
+# formula, so every report this produces carries an explicit "estimate"
+# label. This is a comparison against past behavior, never a hard signal.
+# --------------------------------------------------------------------------
+
+_HONESTY_LABEL = "estimate — the cap formula is not public"
+
+
+@dataclass(frozen=True)
+class UsageTotals:
+    input_tokens: int
+    output_tokens: int
+    cache_creation_tokens: int
+    cache_read_tokens: int
+    records: int
+
+
+def _usage_int(usage: Mapping, key: str) -> int:
+    value = usage.get(key)
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def sum_usage(records: Sequence[Mapping], *, since_utc: datetime) -> UsageTotals:
+    """Sums message.usage fields of assistant records newer than since_utc.
+
+    Non-assistant records, records with no/unparseable timestamp, records
+    older than since_utc, and records with a missing/malformed usage block
+    are all silently skipped — never an exception (this scans arbitrary
+    transcript files across every project)."""
+    input_tokens = output_tokens = cache_creation_tokens = cache_read_tokens = 0
+    counted = 0
+
+    for record in records:
+        if not isinstance(record, Mapping) or record.get("type") != "assistant":
+            continue
+
+        raw_ts = record.get("timestamp")
+        ts = _parse_ts(raw_ts) if isinstance(raw_ts, str) else None
+        if ts is None or ts < since_utc:
+            continue
+
+        raw_message = record.get("message")
+        message = raw_message if isinstance(raw_message, Mapping) else {}
+        raw_usage = message.get("usage")
+        usage = raw_usage if isinstance(raw_usage, Mapping) else {}
+        if not usage:
+            continue
+
+        input_tokens += _usage_int(usage, "input_tokens")
+        output_tokens += _usage_int(usage, "output_tokens")
+        cache_creation_tokens += _usage_int(usage, "cache_creation_input_tokens")
+        cache_read_tokens += _usage_int(usage, "cache_read_input_tokens")
+        counted += 1
+
+    return UsageTotals(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cache_creation_tokens=cache_creation_tokens,
+        cache_read_tokens=cache_read_tokens,
+        records=counted,
+    )
+
+
+def _total_tokens(totals: UsageTotals) -> int:
+    return totals.input_tokens + totals.output_tokens + totals.cache_creation_tokens + totals.cache_read_tokens
+
+
+def format_burn_report(current: UsageTotals, calibration: UsageTotals | None) -> str:
+    """Prints raw per-class sums for the current window; if calibration
+    data exists (past limit-hit windows' median burn), adds a percentage
+    comparison. Always carries the honesty label — never presented as a
+    precise remaining-quota figure, because none exists (DESIGN §3)."""
+    lines = [
+        f"codex-handoff burn report ({_HONESTY_LABEL})",
+        "",
+        f"current 5h window: {current.records} assistant message(s) with usage data",
+        f"  input tokens:          {current.input_tokens:,}",
+        f"  output tokens:         {current.output_tokens:,}",
+        f"  cache creation tokens: {current.cache_creation_tokens:,}",
+        f"  cache read tokens:     {current.cache_read_tokens:,}",
+    ]
+
+    if calibration is None or calibration.records == 0:
+        lines.append("")
+        lines.append("no calibration data yet — run `check --calibrate` to build one from past limit-hit windows")
+        return "\n".join(lines)
+
+    current_total = _total_tokens(current)
+    calibration_total = _total_tokens(calibration)
+    pct = f"{(current_total / calibration_total) * 100:.0f}%" if calibration_total > 0 else "n/a"
+
+    lines.append("")
+    lines.append(
+        f"past limit-hit windows burned ~{calibration_total:,} tokens (median) "
+        f"— you are at {pct} of that ({_HONESTY_LABEL})"
+    )
+    return "\n".join(lines)

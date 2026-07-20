@@ -1,6 +1,6 @@
 """Integration tests for codex_handoff.py — the IO shell + CLI.
 
-Three tests, per PLAN.md Phase 2:
+Three tests:
   - test_dry_run_cli_end_to_end   — CLI subprocess, no codex needed
   - test_auto_hook_decision       — CLI subprocess, no codex needed
   - test_real_codex_tiny_task     — REAL `codex exec`, unmocked (DESIGN forbids

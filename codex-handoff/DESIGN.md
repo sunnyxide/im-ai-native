@@ -22,7 +22,7 @@ Claude Code writes every session to a transcript file:
 ~/.claude/projects/<munged-cwd>/<session-id>.jsonl
 ```
 
-(`<munged-cwd>` is the working directory with `/` and `.` replaced by `-`, e.g. `/Users/sunny/Desktop/OrbtAgent` → `-Users-sunny-Desktop-OrbtAgent`.)
+(`<munged-cwd>` is the working directory with `/` and `.` replaced by `-`, e.g. `/Users/you/Projects/my-app` → `-Users-you-Projects-my-app`.)
 
 When an API call fails, Claude Code appends a machine-readable record. Real examples found in local transcripts (fields abridged):
 
@@ -96,14 +96,15 @@ Functional core / imperative shell. Two Python files, one hook shim directory, t
 ```
 codex-handoff/
 ├── DESIGN.md                      ← this file
-├── PLAN.md                        ← phased implementation plan
-├── README.md                      ← install + usage (bilingual, house style)   [Phase 3]
+├── README.md                      ← install + usage (bilingual, house style)
 ├── handoff_core.py                ← PURE core: classify / decide / package / render / redact.
 │                                    No IO, no subprocess, no env reads. Fully unit-testable.
 ├── codex_handoff.py               ← IO shell + CLI: transcript reading, git snapshot,
 │                                    codex subprocess, report writing, hook entry.
 ├── hooks/
 │   └── settings-snippet.json      ← copy-paste hook wiring for settings.json
+├── examples/
+│   └── try-it.sh                  ← safe demo: 3 real handoffs in throwaway repos
 └── tests/
     ├── test_core.py               ← unit tests on real fixture record shapes (no codex needed)
     └── test_invoker_integration.py← REAL `codex exec` on a tiny task in a temp repo

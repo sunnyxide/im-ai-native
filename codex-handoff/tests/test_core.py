@@ -1,7 +1,7 @@
 """Unit tests for handoff_core.py — the pure functional core.
 
 No filesystem, no subprocess, no codex binary needed. Fixtures below are the
-real (abridged) record shapes verified on this machine, per PLAN.md Phase 1.
+real (abridged) record shapes verified against live Claude Code transcripts.
 """
 
 import copy

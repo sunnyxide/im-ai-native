@@ -11,7 +11,7 @@ Most AI coding assistants write for a legacy software engineer. They lead with m
 
 The usual fix, "just be shorter," is worse: aggressive brevity drops the *substance* (a real caveat, a number, a next step) along with the filler.
 
-**im-ai-native fixes the shape, not the length.** Two parts:
+**im-ai-native fixes the shape, not the length.** Three parts:
 
 ### 1. `im-ai-native` — an output-style skill
 
@@ -25,6 +25,10 @@ Shapes every reply to be **plain-first and complete**:
 ### 2. `model-routing` — a policy + a guard hook
 
 Four Claude tiers, one budget. This is **not a magic auto-router** — it's a routing policy (which tier a task should run on) plus one small hook that stops the most common silent leak: a big-model session spawning helper agents that quietly inherit the big model. See [`model-routing/`](./model-routing/).
+
+### 3. `codex-handoff` — a limit-hit handoff to Codex
+
+Your Claude usage limit hits mid-task, and work dead-stops until it resets. This is **not a quota dashboard or a daemon** — it packages the in-flight task into a prompt for the OpenAI Codex CLI (a provider you already pay for) so the work keeps moving, then writes a report your next Claude session picks up automatically. See [`codex-handoff/`](./codex-handoff/).
 
 ## Before / after
 

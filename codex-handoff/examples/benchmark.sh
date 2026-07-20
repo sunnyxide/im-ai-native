@@ -12,6 +12,12 @@
 # 4-7 are medium, 8-10 are hard and may genuinely fail. A benchmark reports,
 # it doesn't gate — this script always exits 0.
 #
+# Integrity guard: every scenario whose task text tells Codex "do NOT
+# modify <file>" also verifies that file is byte-identical to the
+# baseline commit (git diff HEAD -- <file>), not just that the functional
+# check passes. Without this, Codex satisfying the check by rewriting a
+# protected test to match a wrong implementation would read as a pass.
+#
 # Safe by construction:
 #   - only ever touches repos it just created under a fresh temp directory
 #   - reports go to an isolated CODEX_HANDOFF_HOME, never your real
@@ -64,11 +70,35 @@ handoff() {
   python3 "$CH" now --repo "$dir" --task "$task" >"$logfile" 2>&1
 }
 
-# check <name> <elapsed-seconds> <shell test command> <logfile>
+# check <name> <elapsed-seconds> <shell test command> <logfile> <repo-dir> [protected-file ...]
+#
+# <repo-dir> is the scenario's git repo (baseline already committed before
+# the handoff ran). Any trailing args are paths, relative to <repo-dir>,
+# that the task told Codex not to touch. If any of them differ from the
+# baseline commit, this reports a distinct FAIL reason and skips the
+# functional check entirely -- a protected-file edit is disqualifying on
+# its own, regardless of whether the functional check would also pass.
 check() {
-  local name="$1" elapsed="$2" cmd="$3" logfile="$4"
+  local name="$1" elapsed="$2" cmd="$3" logfile="$4" repodir="$5"
+  shift 5
   TOTAL=$((TOTAL + 1))
   TIMES+=("$elapsed")
+
+  local f modified=()
+  for f in "$@"; do
+    if ! (cd "$repodir" && git diff --quiet HEAD -- "$f"); then
+      modified+=("$f")
+    fi
+  done
+
+  if [ "${#modified[@]}" -gt 0 ]; then
+    local joined
+    joined="$(IFS=,; echo "${modified[*]}")"
+    printf '%-24s | %-4s | %ss\n' "$name" "FAIL" "$elapsed"
+    echo "  -> FAIL (modified protected files: $joined)"
+    return
+  fi
+
   if eval "$cmd" >/dev/null 2>&1; then
     printf '%-24s | %-4s | %ss\n' "$name" "pass" "$elapsed"
     PASSED=$((PASSED + 1))
@@ -110,7 +140,8 @@ SECONDS=0
 handoff "$WORK/stub-fn" \
   "Implement slugify() in slugify.py so all three tests in test_slugify.py pass. Do NOT modify the tests." \
   "$WORK/logs/stub-fn.log"
-check stub-fn "$SECONDS" "python3 -m unittest test_slugify" "$WORK/logs/stub-fn.log"
+check stub-fn "$SECONDS" "python3 -m unittest test_slugify" "$WORK/logs/stub-fn.log" \
+  "$WORK/stub-fn" test_slugify.py
 fi
 
 ########################################################################
@@ -146,7 +177,8 @@ SECONDS=0
 handoff "$WORK/logic-bug" \
   "test_stats.py fails on the even-length cases. Find and fix the bug in stats.py. Do NOT modify the tests." \
   "$WORK/logs/logic-bug.log"
-check logic-bug "$SECONDS" "python3 -m unittest test_stats" "$WORK/logs/logic-bug.log"
+check logic-bug "$SECONDS" "python3 -m unittest test_stats" "$WORK/logs/logic-bug.log" \
+  "$WORK/logic-bug" test_stats.py
 fi
 
 ########################################################################
@@ -184,7 +216,7 @@ handoff "$WORK/flag-and-docs" \
   "$WORK/logs/flag-and-docs.log"
 check flag-and-docs "$SECONDS" \
   "python3 cli.py World | grep -qx 'Hello, World!' && python3 cli.py World --json | python3 -c \"import json,sys; d=json.loads(sys.stdin.read()); assert d.get('greeting')=='Hello, World!'\" && grep -q -- '--json' README.md" \
-  "$WORK/logs/flag-and-docs.log"
+  "$WORK/logs/flag-and-docs.log" "$WORK/flag-and-docs"
 fi
 
 ########################################################################
@@ -219,9 +251,19 @@ for bad in ("abc", "0", "70000", "-5", "3.5", ""):
     try:
         port.parse_port(bad)
         ok = False  # should have raised
-    except Exception:
+    except ValueError:
         pass
+    except Exception:
+        ok = False  # raised something, but not the ValueError the task asked for
 
+# The task now explicitly says "using Python's built-in unittest module",
+# so there is no framework ambiguity to accept both ways on -- this keeps
+# the benchmark stdlib-only (no pytest fallback). A prior version of this
+# check ran unittest first and fell back to `python3 -m pytest` when that
+# collected nothing; that both broke the zero-dependency claim and still
+# failed on a machine without pytest installed, the exact case it claimed
+# to handle. Specifying the framework in the task removed the ambiguity
+# at the source instead of papering over it in the check.
 test_files = [
     f for f in glob.glob("test_*.py") + glob.glob("*_test.py")
     if "parse_port" in open(f, encoding="utf-8").read()
@@ -229,27 +271,21 @@ test_files = [
 if not test_files:
     ok = False
 else:
-    # The task never said which test framework to use, so accept either.
-    # (The first published run scored this scenario FAIL because this check
-    # only ran unittest while Codex had written valid pytest-style tests.)
     mod_names = [f[:-3] for f in test_files]
     r = subprocess.run([sys.executable, "-m", "unittest", *mod_names], capture_output=True, text=True)
     collected_nothing = "Ran 0 tests" in (r.stdout + r.stderr)
     if r.returncode != 0 or collected_nothing:
-        r2 = subprocess.run([sys.executable, "-m", "pytest", "-q", *test_files], capture_output=True, text=True)
-        if r2.returncode != 0:
-            ok = False
-            if "No module named pytest" in (r2.stdout + r2.stderr):
-                print("tests look pytest-style but pytest is not installed; cannot verify")
+        ok = False
 
 sys.exit(0 if ok else 1)
 PYEOF
 
 SECONDS=0
 handoff "$WORK/write-tests" \
-  "parse_port(s) in port.py currently does no input validation - int(s) will accept garbage and out-of-range values. Make it reject non-integer strings and integers outside the valid TCP port range (1-65535) by raising a ValueError with a clear message, and keep valid ports (1-65535) working as before. Then add a test file that covers: a valid port parsing correctly, a non-integer string raising, and out-of-range integers (too low and too high) raising." \
+  "parse_port(s) in port.py currently does no input validation - int(s) will accept garbage and out-of-range values. Make it reject non-integer strings and integers outside the valid TCP port range (1-65535) by raising a ValueError with a clear message, and keep valid ports (1-65535) working as before. Then add a test file using Python's built-in unittest module that covers: a valid port parsing correctly, a non-integer string raising, and out-of-range integers (too low and too high) raising." \
   "$WORK/logs/write-tests.log"
-check write-tests "$SECONDS" "(cd '$WORK/write-tests' && python3 - < '$WORK/checks/write-tests.py')" "$WORK/logs/write-tests.log"
+check write-tests "$SECONDS" "(cd '$WORK/write-tests' && python3 - < '$WORK/checks/write-tests.py')" \
+  "$WORK/logs/write-tests.log" "$WORK/write-tests"
 fi
 
 ########################################################################
@@ -309,7 +345,7 @@ handoff "$WORK/refactor-no-regression" \
   "$WORK/logs/refactor-no-regression.log"
 check refactor-no-regression "$SECONDS" \
   "python3 -m unittest test_discounts && [ \"\$(grep -c NORMALIZE_STEP discounts.py)\" -eq 1 ]" \
-  "$WORK/logs/refactor-no-regression.log"
+  "$WORK/logs/refactor-no-regression.log" "$WORK/refactor-no-regression" test_discounts.py
 fi
 
 ########################################################################
@@ -354,7 +390,7 @@ handoff "$WORK/cross-file-trace" \
   "$WORK/logs/cross-file-trace.log"
 check cross-file-trace "$SECONDS" \
   "python3 -m unittest test_report && git diff HEAD --name-only | grep -qx formatting.py" \
-  "$WORK/logs/cross-file-trace.log"
+  "$WORK/logs/cross-file-trace.log" "$WORK/cross-file-trace" test_report.py
 fi
 
 ########################################################################
@@ -411,7 +447,8 @@ SECONDS=0
 handoff "$WORK/finish-class" \
   "Implement Ledger.balance() and Ledger.history() in ledger.py per the contract described in the class docstring. Do NOT modify add() or test_ledger.py." \
   "$WORK/logs/finish-class.log"
-check finish-class "$SECONDS" "python3 -m unittest test_ledger" "$WORK/logs/finish-class.log"
+check finish-class "$SECONDS" "python3 -m unittest test_ledger" "$WORK/logs/finish-class.log" \
+  "$WORK/finish-class" test_ledger.py
 fi
 
 ########################################################################
@@ -464,7 +501,8 @@ SECONDS=0
 handoff "$WORK/mutable-default" \
   "test_collector.py's test_fresh_each_call is failing because collect() in collector.py leaks state between calls via a mutable default argument. Fix collect() so each call made without an explicit into= starts from a fresh empty list, while collect(item, into=some_list) still appends to the list the caller passed in. Do NOT modify test_collector.py." \
   "$WORK/logs/mutable-default.log"
-check mutable-default "$SECONDS" "(cd '$WORK/mutable-default' && python3 - < '$WORK/checks/mutable-default.py')" "$WORK/logs/mutable-default.log"
+check mutable-default "$SECONDS" "(cd '$WORK/mutable-default' && python3 - < '$WORK/checks/mutable-default.py')" \
+  "$WORK/logs/mutable-default.log" "$WORK/mutable-default" test_collector.py
 fi
 
 ########################################################################
@@ -522,7 +560,7 @@ handoff "$WORK/two-file-consistency" \
   "$WORK/logs/two-file-consistency.log"
 check two-file-consistency "$SECONDS" \
   "python3 -m unittest test_codec && git diff HEAD --name-only | grep -qx schema.py && git diff HEAD --name-only | grep -qx codec.py" \
-  "$WORK/logs/two-file-consistency.log"
+  "$WORK/logs/two-file-consistency.log" "$WORK/two-file-consistency" test_codec.py
 fi
 
 ########################################################################
@@ -583,7 +621,8 @@ SECONDS=0
 handoff "$WORK/spec-only" \
   "Implement the --repeat N flag described in the 'Planned: --repeat' section of README.md." \
   "$WORK/logs/spec-only.log"
-check spec-only "$SECONDS" "(cd '$WORK/spec-only' && python3 - < '$WORK/checks/spec-only.py')" "$WORK/logs/spec-only.log"
+check spec-only "$SECONDS" "(cd '$WORK/spec-only' && python3 - < '$WORK/checks/spec-only.py')" \
+  "$WORK/logs/spec-only.log" "$WORK/spec-only"
 fi
 
 ########################################################################

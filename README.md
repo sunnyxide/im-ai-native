@@ -1,76 +1,89 @@
-<h1 align="center">im-ai-native</h1>
-<p align="center"><strong>A Claude Code kit for people who build through agentic coding — not 10 years of legacy software engineering.</strong></p>
-<p align="center"><em>Plain-first answers that don't bury the point, in your language · model routing that doesn't burn your usage cap.</em></p>
-<p align="center">🇬🇧 English · <a href="./README.ko.md">🇰🇷 한국어</a></p>
+# im-ai-native
 
----
+A small kit for Claude Code: replies you can actually read, model routing that protects your usage cap, and a way to keep working after the cap runs out.
 
-## Why
+No dependencies. Python 3.12 stdlib and markdown, MIT licensed.
 
-Most AI coding assistants write for a legacy software engineer. They lead with mechanism, spray function names and `git`/CI/`pytest` idioms across every paragraph, and bury the one decision you need under 3,000 characters of scene-setting. If you started building *with* AI — sharp about product and systems, but without a decade of plumbing muscle memory — that output is exhausting and doesn't land on first read.
+[한국어 README](README.ko.md)
 
-The usual fix, "just be shorter," is worse: aggressive brevity drops the *substance* (a real caveat, a number, a next step) along with the filler.
+![codex-handoff finishing a task after the Claude usage limit hit](docs/demo.gif)
 
-**im-ai-native fixes the shape, not the length.** Three parts:
-
-### 1. `im-ai-native` — an output-style skill
-
-Shapes every reply to be **plain-first and complete**:
-
-- **Answers in your language.** Korean question → Korean answer. English → English. Checked per message, not per session.
-- **Leads with the decision**, then the reasoning — never a buried menu at the bottom.
-- **Glosses every jargon term the first time** — says what it *does*: <code>|| true</code> → "a switch that forces the step to pass even when the tests fail." The identifier trails in parentheses; the plain meaning leads.
-- **Cuts redundancy, never substance.** Re-litigation, triple-recaps, restated requests go. A distinct recommendation, caveat, number, or next step *never* goes — even if it costs one more line.
-
-### 2. `model-routing` — a policy + a guard hook
-
-Four Claude tiers, one budget. This is **not a magic auto-router** — it's a routing policy (which tier a task should run on) plus one small hook that stops the most common silent leak: a big-model session spawning helper agents that quietly inherit the big model. See [`model-routing/`](./model-routing/).
-
-### 3. `codex-handoff` — a limit-hit handoff to Codex
-
-Your Claude usage limit hits mid-task, and work dead-stops until it resets. This is **not a quota dashboard or a daemon** — it packages the in-flight task into a prompt for the OpenAI Codex CLI (a provider you already pay for) so the work keeps moving, then writes a report your next Claude session picks up automatically. See [`codex-handoff/`](./codex-handoff/).
-
-## Before / after
-
-> **Before** (legacy-SWE voice)
-> The CI step uses `pytest ... || true`, which overrides the exit code to 0, so a failing suite still reports success. This was flagged on 2026-05-07 but remained unaddressed…
-
-> **After** (im-ai-native)
-> **The green check was lying — it said "pass" even when tests failed.** The test step had a switch on it (`|| true`) that forces "pass" no matter what — a smoke alarm with the battery pulled. A bot flagged it the first day; it sat for 69 days. Now removed, so the check can actually go red.
-
-Full 3-way comparison (original vs a generic brevity ruleset vs im-ai-native), with an EN/KO toggle: [`examples/comparison.html`](./examples/comparison.html).
+*Above: the Claude limit hits with the work half-done. One command packages what was in flight, Codex finishes it, the tests pass. Real recording of a real run. The roughly 30 seconds Codex spends working is cut from the middle; nothing else is edited or sped up.*
 
 ## Install
 
-### The skill
-
-Copy the skill into your Claude Code skills directory:
+Claude Code reads skills, rules, and hooks out of `~/.claude/`. Take whichever parts you want:
 
 ```bash
 git clone https://github.com/sunnyxide/im-ai-native
-cp -r im-ai-native/skills/im-ai-native ~/.claude/skills/
+cd im-ai-native
+
+# 1. the output voice
+mkdir -p ~/.claude/skills/im-ai-native && cp skills/im-ai-native/SKILL.md ~/.claude/skills/im-ai-native/
+
+# 2. the same voice as an always-on rule (optional)
+mkdir -p ~/.claude/rules/common && cp rules/output-style.md ~/.claude/rules/common/
+
+# 3. the model-routing guard hook
+mkdir -p ~/.claude/hooks && cp model-routing/hooks/subagent-model-guard.py ~/.claude/hooks/
+
+# 4. codex-handoff
+cp -R codex-handoff ~/.claude/codex-handoff
 ```
 
-Invoke it with `/im-ai-native`, or make it always-on (below).
+Try the handoff without running anything. This only prints what would be sent:
 
-### Always-on (recommended)
+```bash
+python3 ~/.claude/codex-handoff/codex_handoff.py now --dry-run --repo . --task "finish the parser"
+```
 
-The skill only fires when invoked. To apply the style to *every* reply, add the rule file to a directory Claude Code loads every session. Either paste [`rules/output-style.md`](./rules/output-style.md) into your `~/.claude/CLAUDE.md`, or drop it into `~/.claude/rules/common/` if you keep modular rules there.
+## What's in it
 
-### The model-routing hook
+**[The output voice](skills/im-ai-native/SKILL.md).** Answers in the language you asked the question in. Explains a flag or a function name the first time it appears instead of assuming you have ten years of muscle memory for it. Cuts repetition without cutting the caveat you needed.
 
-See [`model-routing/README.md`](./model-routing/README.md) for the `settings.json` snippet.
+**[Model routing](model-routing/README.md).** Which model and effort level fits which task, plus a hook that refuses to spawn a background subagent with no model set. Without it, an exploration agent spawned from an Opus session silently inherits Opus and runs a whole file sweep at that price. In one audit of a real setup, 31 of 32 recent spawns had inherited this way.
 
-## What this is not
+**[codex-handoff](codex-handoff/README.md).** When your Claude usage limit hits mid-task, it packages the in-flight work (the task, your plan, the files you touched, the current diff) into a prompt for the Codex CLI, runs it sandboxed, and writes a report your next Claude session picks up.
 
-- It doesn't dumb answers down. Plain ≠ shallow — every technical fact stays, it's just glossed.
-- It doesn't enforce a word count. A table-shaped answer stays a table; it just isn't a *jargon* table.
-- The model router doesn't pick models for you. It documents a policy and blocks one accidental leak — the judgment stays yours.
+> [!NOTE]
+> codex-handoff does not raise, extend, or bypass any usage limit. It moves unfinished work to a provider you already pay for. Limit detection from hooks is best effort: Claude Code records a limit hit in the session transcript and the message text is the only thing that separates it from ordinary server throttling, so the manual trigger is the reliable path and the hooks are the convenience. There is no quota API, and this kit does not pretend there is one.
 
-## Credits
+## Does the handoff actually work
 
-The "shape output for how a specific brain reads" idea is inspired by [`i-have-adhd`](https://github.com/ayghri/i-have-adhd) by ayghri. im-ai-native takes a different target reader (the AI-native builder), adds first-language matching and jargon-glossing, and deliberately keeps *substance* where a pure-brevity ruleset would cut it.
+One run of the 10-scenario benchmark in this repo, one Codex call each, no retries:
+
+| scenario | result | time |
+|---|---|---|
+| stub-fn — implement a stubbed function against given tests | pass | 31s |
+| logic-bug — fix a wrong even-length median | pass | 32s |
+| flag-and-docs — add a CLI flag and document it | pass | 52s |
+| write-tests — add validation and write tests for it | fail | 49s |
+| refactor-no-regression — extract duplicated logic, keep behaviour | pass | 62s |
+| cross-file-trace — bug lives in a file the failing test never imports | pass | 40s |
+| finish-class — implement two methods from a docstring contract | pass | 30s |
+| mutable-default — fix a leaking mutable default argument | pass | 38s |
+| two-file-consistency — two files must change together | pass | 62s |
+| spec-only — implement from prose, no tests given | pass | 35s |
+
+**9 of 10, median 39 seconds.** The one failure was this repo's check script rather than Codex: the task never said which test framework to use, Codex wrote valid pytest-style tests, and the check only ran `unittest`. The check accepts either now, so your run may score differently. Published as measured instead of re-scored after the fact.
+
+Reproduce it yourself:
+
+```bash
+./codex-handoff/examples/benchmark.sh   # 10 real Codex calls, about 7 minutes
+./codex-handoff/examples/try-it.sh      # shorter: 3 scenarios
+```
+
+Read that number for what it is. It measures the handoff mechanism working end to end on small, well-scoped Python tasks in throwaway repos. It does not measure how Codex handles a large unfamiliar codebase, and ten single runs is a smoke test, not a stable pass rate.
+
+## How this relates to other things
+
+The output voice started as a rewrite of [i-have-adhd](https://github.com/ayghri/i-have-adhd), which pulls the action to the top of every reply. That part worked. Two things did not survive contact with real sessions: raw identifiers stayed unexplained, and aggressive trimming dropped real content, including an entire cost plan in one case. So this version keeps the lead-with-the-answer rule, adds the glossing rule, and makes losing substance an explicit failure.
+
+codex-handoff drives the [Codex CLI](https://github.com/openai/codex). It is a packaging and reporting layer around `codex exec`, not a replacement for it.
+
+If something already does the handoff better, open an issue and I will link it here.
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT. See [LICENSE](LICENSE).

@@ -229,10 +229,18 @@ test_files = [
 if not test_files:
     ok = False
 else:
+    # The task never said which test framework to use, so accept either.
+    # (The first published run scored this scenario FAIL because this check
+    # only ran unittest while Codex had written valid pytest-style tests.)
     mod_names = [f[:-3] for f in test_files]
     r = subprocess.run([sys.executable, "-m", "unittest", *mod_names], capture_output=True, text=True)
-    if r.returncode != 0:
-        ok = False
+    collected_nothing = "Ran 0 tests" in (r.stdout + r.stderr)
+    if r.returncode != 0 or collected_nothing:
+        r2 = subprocess.run([sys.executable, "-m", "pytest", "-q", *test_files], capture_output=True, text=True)
+        if r2.returncode != 0:
+            ok = False
+            if "No module named pytest" in (r2.stdout + r2.stderr):
+                print("tests look pytest-style but pytest is not installed; cannot verify")
 
 sys.exit(0 if ok else 1)
 PYEOF

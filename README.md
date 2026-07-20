@@ -1,26 +1,20 @@
 # im-ai-native
 
-I build through agentic coding, not ten years of legacy software engineering.
+Claude Code output you actually understand, a usage cap that doesn't quietly vanish, and work that keeps moving when your limit does.
 
-So I had been reading Claude Code's replies the way you read a language you only half know: fast, approximately, filling the gaps with guesses. A flag here, a function name there, a git or CI idiom I recognized the shape of but had never actually parsed. It felt fine. I shipped.
+[![MIT license](https://img.shields.io/github/license/sunnyxide/im-ai-native)](LICENSE) [![tests](https://github.com/sunnyxide/im-ai-native/actions/workflows/tests.yml/badge.svg)](https://github.com/sunnyxide/im-ai-native/actions/workflows/tests.yml)
 
-The missing part kept turning into technical debt. I would approve a change I understood the outcome of but not the mechanism, and find out later what the mechanism actually did. A caveat would get compressed out of a summary and I would not notice it was gone, because I could not tell the difference between a short answer and a thinned one.
+I build through agentic coding, not ten years of legacy software engineering, and I was reading Claude Code's replies at maybe 80% comprehension — recognizing a flag or a git idiom without ever actually parsing it. The missing 20% kept turning into technical debt. Separately, the usage limit would hit mid-task and everything would stop.
 
-Then, separately: the usage limit would hit halfway through a task and everything would stop.
-
-This is what I add to every Claude Code setup to close both gaps.
-
-> Same idea as **[i-have-adhd](https://github.com/ayghri/i-have-adhd)**, aimed at a different gap. That repo made Claude stop burying the answer, and it is where this one started — I rewrote it, kept what held up in real sessions, and changed what didn't. Credit where it's due.
+This closes both gaps. Same idea as **[i-have-adhd](https://github.com/ayghri/i-have-adhd)**, aimed at a different one — full credit under [Credits](#credits).
 
 No dependencies. Python 3.12 stdlib and markdown, MIT licensed. &nbsp;·&nbsp; [한국어 README](README.ko.md)
 
 ![codex-handoff finishing a task after the Claude usage limit hit](docs/demo.gif)
 
-*The limit hits with the work half-done. One command packages what was in flight, Codex finishes it, the tests pass. Real recording of a real run. The roughly 30 seconds Codex spends working is cut from the middle; nothing else is edited or sped up.*
+*The limit hits with the work half-done. One command hands it to Codex, the tests pass. Real recording of a real run — the ~30s Codex spends working is cut from the middle, nothing else is edited or sped up.*
 
 ## Install
-
-Claude Code reads skills, rules, and hooks out of `~/.claude/`. Take whichever parts you want:
 
 ```bash
 git clone https://github.com/sunnyxide/im-ai-native
@@ -40,9 +34,7 @@ cp -R codex-handoff ~/.claude/codex-handoff
 ```
 
 > [!IMPORTANT]
-> Steps 3 and 4 copy files; they do not switch anything on. A hook only runs once it is registered in `~/.claude/settings.json`. Copy the guard-hook block from [model-routing/README.md](model-routing/README.md) and the codex-handoff block from [codex-handoff/hooks/settings-snippet.json](codex-handoff/hooks/settings-snippet.json) into that file. Until you do, the model guard is not protecting anything.
->
-> Steps 1 and 2 take effect as soon as the files are in place. codex-handoff's manual command below also works with no hook registered — the hooks only add automatic detection and the next-session pickup.
+> Steps 3 and 4 copy files; they don't switch anything on. A hook only runs once it's registered in `~/.claude/settings.json` — copy the guard-hook block from [model-routing/README.md](model-routing/README.md) and the codex-handoff block from [codex-handoff/hooks/settings-snippet.json](codex-handoff/hooks/settings-snippet.json) into that file. Steps 1 and 2 take effect as soon as the files are in place, and codex-handoff's manual command works with no hook registered — hooks only add automatic detection and next-session pickup.
 
 Try the handoff without running anything. This only prints what would be sent:
 
@@ -50,58 +42,58 @@ Try the handoff without running anything. This only prints what would be sent:
 python3 ~/.claude/codex-handoff/codex_handoff.py now --dry-run --repo . --task "finish the parser"
 ```
 
-## What's in it
+## What it does
 
-**[The output voice](skills/im-ai-native/SKILL.md)** — for the comprehension gap. Answers in the language you asked the question in. Explains a flag or a function name the first time it appears, by saying what it *does*, with the identifier trailing in parentheses instead of leading the sentence. And it treats losing substance as a failure: trimming repetition is fine, dropping a caveat or a number to look shorter is not. That second rule exists because the first version of this cut too hard and quietly deleted things I needed.
+- Explains a flag or function name the first time it shows up — says what it *does*, not just its name
+- Never drops a caveat, a number, or a next step just to make a reply look shorter
+- Answers in the language you asked the question in, every message
+- Refuses to spawn a background subagent that silently inherits an expensive model
+- Hands unfinished work to Codex when your usage limit hits, instead of just stopping
 
-**[Model routing](model-routing/README.md)** — for the cap. Which model and effort level fits which task, plus a hook that refuses to spawn a background subagent with no model set. Without it, an exploration agent spawned from an Opus session silently inherits Opus and runs a whole file sweep at that price. In one audit of my own setup, 31 of 32 recent spawns had inherited this way.
+## What changes
 
-**[codex-handoff](codex-handoff/README.md)** — for when the cap runs out. It packages the in-flight work (the task, your plan, the files you touched, the current diff) into a prompt for the Codex CLI, runs it sandboxed, and writes a report your next Claude session picks up.
+![Same reply, before and after the im-ai-native voice rule](docs/before-after.png)
+
+Same underlying information both times. The difference is whether you already have to know what `|| true` and `--ignore-glob` do.
+
+## The rules
+
+The full set lives in [`skills/im-ai-native/SKILL.md`](skills/im-ai-native/SKILL.md). The core of it:
+
+1. Match the question's language — every message, not every session.
+2. Lead with the decision, then the reasoning.
+3. Gloss a term the first time it appears — say what it does, identifier trailing in parentheses.
+4. One plain-language sentence before any mechanism.
+5. Cut redundancy; never a caveat, a number, or a next step.
+6. Backtick only the identifiers that matter — one fenced block beats a wall of them.
+7. State the decision once. No triple recap, no manufactured closer.
+
+## Add-ons
+
+### Model routing
+
+Which model and effort level fits which task, plus a hook that refuses to spawn a background subagent with no model set. In one audit of my own setup, 31 of 32 recent exploration spawns had silently inherited the parent session's expensive model. → [model-routing/README.md](model-routing/README.md)
+
+### codex-handoff
+
+When the usage limit hits mid-task, this packages what was in flight — the task, your plan, the files you touched, the current diff — into a prompt for the Codex CLI, runs it sandboxed, and writes a report your next Claude session picks up.
 
 > [!NOTE]
-> codex-handoff does not raise, extend, or bypass any usage limit. It moves unfinished work to a provider you already pay for. Limit detection from hooks is best effort: Claude Code records a limit hit in the session transcript and the message text is the only thing that separates it from ordinary server throttling, so the manual trigger is the reliable path and the hooks are the convenience. There is no quota API, and this kit does not pretend there is one.
+> Does not raise, extend, or bypass any usage limit. It moves the work to a provider you already pay for. Detection from hooks is best effort — there's no quota API, and this kit doesn't pretend there is one.
 
-## Does the handoff actually work
+**Does it actually work?** One run of the 10-scenario benchmark in this repo, one Codex call each, no retries:
 
-One run of the 10-scenario benchmark in this repo, one Codex call each, no retries:
+![10-scenario benchmark, colored by difficulty tier, median 35.5 seconds](docs/benchmark-chart.png)
 
-| scenario | result | time |
-|---|---|---|
-| stub-fn — implement a stubbed function against given tests | pass | 28s |
-| logic-bug — fix a wrong even-length median | pass | 29s |
-| flag-and-docs — add a CLI flag and document it | pass | 38s |
-| write-tests — add validation and write tests for it | pass | 39s |
-| refactor-no-regression — extract duplicated logic, keep behaviour | pass | 41s |
-| cross-file-trace — bug lives in a file the failing test never imports | pass | 63s |
-| finish-class — implement two methods from a docstring contract | pass | 33s |
-| mutable-default — fix a leaking mutable default argument | pass | 26s |
-| two-file-consistency — two files must change together | pass | 33s |
-| spec-only — implement from prose, no tests given | pass | 49s |
+**10 of 10, median 35.5 seconds** — after three rounds of adversarial review made the checks stricter, not looser. Full writeup of how that score was earned, the scenario table, the known remaining gaps, and how to reproduce it → [codex-handoff/README.md](codex-handoff/README.md#does-the-handoff-actually-work)
 
-**10 of 10, median 35.5 seconds.** A perfect score deserves suspicion, so here is exactly how it was produced — and how it kept being checked.
+## Credits
 
-An earlier run scored 9 of 10. Since then the checks have gone through three rounds of adversarial review, each one making the checks **stricter, not looser.** Round one: every scenario that tells Codex not to touch a given file now also fails if that file differs from the baseline commit by a single byte, before the functional check runs at all — that guard covers seven of the ten scenarios and has not fired on any of them. Round one also tightened `write-tests` to require the exact exception type the task asks for, rather than accepting any exception.
+[i-have-adhd](https://github.com/ayghri/i-have-adhd) is the origin of the voice rules. Its lead-with-the-answer rule held up in real sessions; two things didn't — raw identifiers stayed unexplained, and aggressive trimming dropped real content, including an entire cost plan in one case. This version keeps the answer-first rule, adds the glossing rule, and treats losing substance as an explicit failure.
 
-Round two closed two more holes, both about accepting the appearance of coverage instead of the real thing. `write-tests` used to accept any test file that merely contained the string `parse_port` — a one-line smoke test would have scored a pass even with zero coverage of the required cases (non-integer input, out-of-range in both directions). It now proves coverage by mutation testing: it runs Codex's delivered test file against four deliberately-broken drop-in implementations of the function, each one isolated in its own temp directory, and requires the suite to fail against every one of them. `two-file-consistency` used to accept a constant checksum like `checksum=0` on every record, because the test it hands to Codex only checks that a `checksum=` field exists and survives a round-trip. The check now imports Codex's delivered code directly and asserts the checksum actually changes when the record's content changes, and stays stable when it doesn't. Neither new guard fired in this run — independently confirmed by re-running both checks standalone against the delivered files and reading the delivered `port.py`/`test_port.py` and `codec.py` by hand.
+codex-handoff drives the [Codex CLI](https://github.com/openai/codex) — a packaging and reporting layer around `codex exec`, not a replacement for it.
 
-The earlier (9/10) failure was a bug in the check, not in Codex's work: the task never said which test framework to use, Codex wrote valid pytest-style tests, and the check only ran `unittest`. The task now names `unittest`, which does make that one scenario less ambiguous than it was. The guards have one gap worth knowing: a promise like "do not modify this *function*" can't be enforced by a file-level diff when Codex has to edit the rest of that file, and the mutation tests only cover the specific behaviours the task calls out by name (valid port, non-integer, too low, too high) — they are not a general substitute for a real coverage tool.
-
-Reproduce it yourself:
-
-```bash
-./codex-handoff/examples/benchmark.sh   # 10 real Codex calls, about 7 minutes
-./codex-handoff/examples/try-it.sh      # shorter: 3 scenarios
-```
-
-Read that number for what it is. It measures the handoff mechanism working end to end on small, well-scoped Python tasks in throwaway repos. It does not measure how Codex handles a large unfamiliar codebase, and ten single runs is a smoke test, not a stable pass rate.
-
-## How this relates to other things
-
-[i-have-adhd](https://github.com/ayghri/i-have-adhd) is the origin, as above. Its lead-with-the-answer rule is the part that held up. Two things did not survive contact with real sessions: raw identifiers stayed unexplained, and aggressive trimming dropped real content, including an entire cost plan in one case. So this version keeps the answer-first rule, adds the glossing rule, and makes losing substance an explicit failure.
-
-codex-handoff drives the [Codex CLI](https://github.com/openai/codex). It is a packaging and reporting layer around `codex exec`, not a replacement for it.
-
-If something already does the handoff better, open an issue and I will link it here.
+If something already does this better, open an issue and I'll link it here.
 
 ## License
 

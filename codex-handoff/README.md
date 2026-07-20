@@ -65,6 +65,40 @@ What each one does:
 - **No credentials touched.** Codex uses its own login (`~/.codex`) — this tool never reads, stores, or passes any token. The prompt is sent over stdin (a pipe, not a command-line argument) specifically so it never shows up in `ps` output either.
 - **Every string that reaches a report is redacted first** — API keys, tokens, and other secret-shaped substrings are masked (`«redacted»`) before anything touches disk.
 
+## Does the handoff actually work
+
+One run of the 10-scenario benchmark in this repo, one Codex call each, no retries:
+
+| scenario | result | time |
+|---|---|---|
+| stub-fn — implement a stubbed function against given tests | pass | 33s |
+| logic-bug — fix a wrong even-length median | pass | 29s |
+| flag-and-docs — add a CLI flag and document it | pass | 38s |
+| write-tests — add validation and write tests for it | pass | 39s |
+| refactor-no-regression — extract duplicated logic, keep behaviour | pass | 41s |
+| cross-file-trace — bug lives in a file the failing test never imports | pass | 63s |
+| finish-class — implement two methods from a docstring contract | pass | 33s |
+| mutable-default — fix a leaking mutable default argument | pass | 28s |
+| two-file-consistency — two files must change together | pass | 33s |
+| spec-only — implement from prose, no tests given | pass | 49s |
+
+![10-scenario benchmark chart, colored by difficulty tier](../docs/benchmark-chart.png)
+
+**10 of 10, median 35.5 seconds.** A perfect score deserves suspicion, so here is exactly how it was produced — and how it kept being checked.
+
+An earlier run scored 9 of 10. Since then the checks went through three rounds of adversarial review from automated code review on the pull request, each one making the checks **stricter, not looser.** Round one: every scenario that tells Codex not to touch a given file now also fails if that file differs from the baseline commit by a single byte, before the functional check runs at all. It also tightened `write-tests` to require the exact exception type the task asks for, rather than accepting any exception. Round two closed two holes about accepting the appearance of coverage instead of the real thing: `write-tests` now proves coverage by mutation testing — it runs Codex's delivered test file against four deliberately-broken drop-in implementations and requires the suite to fail against every one of them; `two-file-consistency` now imports Codex's delivered code directly and asserts the checksum actually changes when the record's content changes, and stays stable when it doesn't.
+
+The earlier (9/10) failure was a bug in the check, not in Codex's work — the task never said which test framework to use, Codex wrote valid pytest-style tests, and the check only ran `unittest`. Known remaining gaps in the harness, found by the same review process and not yet closed: the mutation-testing step only copies the discovered test file into each mutant's directory, so a suite that imports a helper module would fail every mutant on `ImportError` rather than on the behaviour actually being tested; and the checksum probe only varies the record's `id` field, so an implementation that checksums `id` alone would pass without checksumming the rest of the record. Neither hole changed the measured 10/10 — the delivered code was independently read by hand and does what the task asked — but a future run could be fooled by either one until they're closed.
+
+Reproduce it yourself:
+
+```bash
+./examples/benchmark.sh   # 10 real Codex calls, about 7 minutes
+./examples/try-it.sh      # shorter: 3 scenarios
+```
+
+Read that number for what it is. It measures the handoff mechanism working end to end on small, well-scoped Python tasks in throwaway repos. It does not measure how Codex handles a large unfamiliar codebase, and ten single runs is a smoke test, not a stable pass rate.
+
 ## Gotchas you might actually see
 
 | What you might see | Why | Fix |
@@ -146,6 +180,41 @@ cp -r im-ai-native/codex-handoff ~/.claude/codex-handoff
 - **리포트는 저장소 밖**, `~/.claude/codex-handoff/` 아래에 저장됩니다 — 작업 중인 프로젝트 안에는 절대 남지 않아서, 이 도구가 그 저장소의 git 상태에 잡음을 더하지 않습니다.
 - **자격증명은 건드리지 않습니다.** Codex는 자기 로그인(`~/.codex`)을 씁니다 — 이 도구는 토큰을 읽지도, 저장하지도, 전달하지도 않습니다. 프롬프트는 stdin(파이프, 커맨드라인 인자 아님)으로 전달되어 `ps` 출력에도 남지 않습니다.
 - **리포트에 남는 모든 문자열은 먼저 마스킹됩니다** — API 키, 토큰 등 비밀처럼 생긴 문자열은 디스크에 쓰이기 전에 `«redacted»`로 가려집니다.
+
+<a name="핸드오프가-실제로-되는가"></a>
+## 핸드오프가 실제로 되는가
+
+이 레포에 들어있는 10개 시나리오 벤치마크를 한 번 돌린 결과입니다. 시나리오당 Codex 호출 1회, 재시도 없음.
+
+| 시나리오 | 결과 | 시간 |
+|---|---|---|
+| stub-fn — 주어진 테스트에 맞춰 빈 함수 구현 | 통과 | 33s |
+| logic-bug — 짝수 길이에서 틀린 중앙값 수정 | 통과 | 29s |
+| flag-and-docs — CLI 플래그 추가하고 문서화 | 통과 | 38s |
+| write-tests — 검증 로직 추가하고 그 테스트까지 작성 | 통과 | 39s |
+| refactor-no-regression — 중복 로직 추출, 동작은 유지 | 통과 | 41s |
+| cross-file-trace — 실패한 테스트가 직접 import하지 않는 파일에 버그 | 통과 | 63s |
+| finish-class — docstring 계약만 보고 메서드 2개 구현 | 통과 | 33s |
+| mutable-default — 상태가 새는 가변 기본 인자 수정 | 통과 | 28s |
+| two-file-consistency — 두 파일을 함께 고쳐야 통과 | 통과 | 33s |
+| spec-only — 테스트 없이 산문 명세만 보고 구현 | 통과 | 49s |
+
+![난이도별로 색을 구분한 10개 시나리오 벤치마크 차트](../docs/benchmark-chart.png)
+
+**10개 중 10개, 중앙값 35.5초.** 만점은 의심받아 마땅하니, 이 숫자가 어떻게 나왔는지, 그리고 그 뒤로 어떻게 계속 검증됐는지 그대로 적습니다.
+
+앞선 실행에서는 10개 중 9개였습니다. 그 뒤로 검사는 PR에 달린 자동 코드리뷰의 적대적 리뷰 세 차례를 거쳤고, 매번 **느슨해진 게 아니라 더 엄격해졌습니다.** 1차: "이 파일은 건드리지 말라"고 한 시나리오는 이제 그 파일이 baseline 커밋과 1바이트라도 다르면 기능 검사를 돌리기도 전에 실패 처리합니다. 1차에서 `write-tests` 검사도 아무 예외나 받아주던 것을 과제가 요구한 예외 타입만 인정하도록 조였습니다. 2차는 "커버리지처럼 보이는 것"과 "진짜 커버리지"를 구분 못 하던 구멍 두 개를 막았습니다. `write-tests`는 이제 Codex가 만든 테스트 파일을 일부러 망가뜨린 네 가지 구현체 각각에 돌려 전부 실패하는지 확인하는 뮤테이션 테스트로 커버리지를 증명하고, `two-file-consistency`는 Codex가 만든 코드를 직접 import해서 레코드 내용이 바뀌면 체크섬도 실제로 바뀌는지, 안 바뀌면 그대로인지 확인합니다.
+
+앞선 (9/10) 실패는 Codex의 작업이 아니라 채점기의 버그였습니다 — 과제문에 테스트 프레임워크를 지정하지 않았고 Codex는 pytest 스타일로 제대로 작성했는데 채점기가 `unittest`만 돌렸습니다. 같은 리뷰 과정에서 발견됐지만 아직 안 막은 구멍도 있습니다. 뮤테이션 테스트 단계는 찾아낸 테스트 파일만 각 뮤턴트 디렉터리에 복사하므로, 헬퍼 모듈을 import하는 테스트 스위트는 실제로 검증해야 할 동작이 아니라 `ImportError`로 모든 뮤턴트에서 실패할 수 있습니다. checksum 검사는 레코드의 `id` 필드만 바꿔보므로, `id`만으로 체크섬을 계산하는 구현도 나머지 필드를 체크섬에 안 넣고 통과할 수 있습니다. 둘 다 이번에 측정된 10/10 자체를 바꾸지는 않았습니다 — 배달된 코드를 직접 읽어서 과제가 요구한 대로 동작하는 걸 확인했습니다 — 하지만 막기 전까지는 다음 실행이 둘 중 하나에 속을 수 있습니다.
+
+직접 재현하려면:
+
+```bash
+./codex-handoff/examples/benchmark.sh   # 실제 Codex 호출 10회, 약 7분
+./codex-handoff/examples/try-it.sh      # 짧은 버전: 3개 시나리오
+```
+
+이 숫자는 딱 그만큼으로 읽어주세요. 임시 레포에서 작고 범위가 분명한 Python 작업에 대해 핸드오프 기계장치가 처음부터 끝까지 동작하는지를 잰 것입니다. Codex가 크고 낯선 코드베이스를 얼마나 잘 다루는지를 잰 게 아니고, 단발 10회는 안정적인 통과율이 아니라 연기 감지 수준의 점검입니다.
 
 ## 실제로 만날 수 있는 문제
 

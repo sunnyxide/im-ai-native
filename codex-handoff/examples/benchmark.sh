@@ -12,11 +12,25 @@
 # 4-7 are medium, 8-10 are hard and may genuinely fail. A benchmark reports,
 # it doesn't gate — this script always exits 0.
 #
-# Integrity guard: every scenario whose task text tells Codex "do NOT
-# modify <file>" also verifies that file is byte-identical to the
-# baseline commit (git diff HEAD -- <file>), not just that the functional
-# check passes. Without this, Codex satisfying the check by rewriting a
-# protected test to match a wrong implementation would read as a pass.
+# Integrity guards, all found by adversarial review of this script itself:
+#   - Every scenario whose task text tells Codex "do NOT modify <file>"
+#     also verifies that file is byte-identical to the baseline commit
+#     (git diff HEAD -- <file>), not just that the functional check
+#     passes. Without this, Codex satisfying the check by rewriting a
+#     protected test to match a wrong implementation would read as a pass.
+#   - write-tests (scenario 4) proves the delivered tests actually cover
+#     the required cases (valid port, non-integer, out-of-range low/high)
+#     by mutation testing: it runs the delivered test file against four
+#     deliberately-broken drop-in port.py mutants, each isolated in its
+#     own temp directory, and requires the suite to FAIL against every
+#     one. A prior version accepted any test file that merely contained
+#     the string "parse_port" -- a trivial smoke test would have passed.
+#   - two-file-consistency (scenario 9) proves the delivered checksum
+#     actually depends on record content -- two records that differ must
+#     checksum differently, the same record must checksum the same way
+#     twice -- instead of only checking that a "checksum=" field exists
+#     and survives a round-trip. A prior version would have accepted a
+#     constant like checksum=0 on every record.
 #
 # Safe by construction:
 #   - only ever touches repos it just created under a fresh temp directory
@@ -232,7 +246,7 @@ git add -A && git commit -qm "baseline"
 printf '\n# TODO: add validation + tests, have not started\n' >> port.py
 
 cat > "$WORK/checks/write-tests.py" <<'PYEOF'
-import glob, importlib, subprocess, sys
+import glob, importlib, os, shutil, subprocess, sys, tempfile
 
 try:
     port = importlib.import_module("port")
@@ -264,18 +278,91 @@ for bad in ("abc", "0", "70000", "-5", "3.5", ""):
 # failed on a machine without pytest installed, the exact case it claimed
 # to handle. Specifying the framework in the task removed the ambiguity
 # at the source instead of papering over it in the check.
-test_files = [
-    f for f in glob.glob("test_*.py") + glob.glob("*_test.py")
-    if "parse_port" in open(f, encoding="utf-8").read()
-]
+#
+# Find the delivered test file(s) by naming convention only -- NOT by
+# grepping for "parse_port" in the file text. A string grep only proves the
+# word appears somewhere; it proves nothing about whether the tests
+# actually exercise the required behaviours. That was the integrity hole a
+# reviewer found: a trivial smoke test containing the word "parse_port"
+# used to score a pass even though the task requires covering a valid
+# port, a non-integer string, and out-of-range in both directions. Real
+# coverage is proven below by mutation testing instead.
+test_files = glob.glob("test_*.py") + glob.glob("*_test.py")
 if not test_files:
     ok = False
-else:
-    mod_names = [f[:-3] for f in test_files]
-    r = subprocess.run([sys.executable, "-m", "unittest", *mod_names], capture_output=True, text=True)
+
+mod_names = [f[:-3] for f in test_files]
+
+def run_suite(cwd):
+    r = subprocess.run(
+        [sys.executable, "-m", "unittest", *mod_names],
+        capture_output=True, text=True, cwd=cwd,
+    )
     collected_nothing = "Ran 0 tests" in (r.stdout + r.stderr)
-    if r.returncode != 0 or collected_nothing:
+    return r.returncode == 0 and not collected_nothing
+
+if test_files:
+    # 1. The delivered tests must pass against the delivered implementation.
+    if not run_suite(os.getcwd()):
         ok = False
+
+    # 2. The delivered tests must FAIL against each of four mutants. Each
+    # mutant is a standalone drop-in replacement for port.py that breaks
+    # exactly one required behaviour while leaving the others intact --
+    # not an AST-level mutation of Codex's own code, since we don't
+    # control its structure or know its exact shape. A copy of the
+    # delivered test file(s) is run against each mutant in its own
+    # isolated temp directory, so the real scenario repo is never
+    # touched. A test suite that still passes against a broken
+    # implementation did not cover that case -- this is the actual proof
+    # of coverage the string-grep version never had.
+    mutants = {
+        "always_raises": '''
+def parse_port(s):
+    """Mutant: rejects every input, including valid ports."""
+    raise ValueError("port rejected")
+''',
+        "accepts_too_low": '''
+def parse_port(s):
+    """Mutant: only checks the upper bound -- 0 and negative ports pass."""
+    n = int(s)
+    if n > 65535:
+        raise ValueError(f"port out of range: {n}")
+    return n
+''',
+        "accepts_too_high": '''
+def parse_port(s):
+    """Mutant: only checks the lower bound -- ports above 65535 pass."""
+    n = int(s)
+    if n < 1:
+        raise ValueError(f"port out of range: {n}")
+    return n
+''',
+        "accepts_non_integer": '''
+def parse_port(s):
+    """Mutant: falls back to a valid port instead of raising on garbage."""
+    try:
+        n = int(s)
+    except ValueError:
+        n = 8080
+    if n < 1 or n > 65535:
+        raise ValueError(f"port out of range: {n}")
+    return n
+''',
+    }
+
+    for mutant_name, mutant_src in mutants.items():
+        tmpdir = tempfile.mkdtemp(prefix=f"write-tests-mutant-{mutant_name}-")
+        try:
+            for f in test_files:
+                shutil.copy(f, os.path.join(tmpdir, f))
+            with open(os.path.join(tmpdir, "port.py"), "w", encoding="utf-8") as fh:
+                fh.write(mutant_src)
+            if run_suite(tmpdir):
+                print(f"mutation gap: delivered tests still pass against mutant {mutant_name!r}")
+                ok = False
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
 
 sys.exit(0 if ok else 1)
 PYEOF
@@ -554,12 +641,61 @@ EOF
 git add -A && git commit -qm "baseline"
 printf '\n# TODO: checksum support needed, see test_codec.py\n' >> codec.py
 
+# test_codec.py (handed to Codex, so it's necessarily hands-off about the
+# actual value) only proves a "checksum=" field exists and survives a
+# round-trip. It cannot prove the checksum is COMPUTED from the record --
+# an implementation that always appends a constant like checksum=0 passes
+# that test, bumps SCHEMA_VERSION, and used to score a pass. This probe
+# lives in the check (the part we control, not the file handed to Codex)
+# and imports the delivered codec.py directly: two records that differ in
+# a meaningful field must produce different checksums, and serializing the
+# same record twice must produce the same checksum (deterministic).
+cat > "$WORK/checks/two-file-consistency.py" <<'PYEOF'
+import importlib, sys
+
+try:
+    codec = importlib.import_module("codec")
+except Exception as e:
+    print("import failed:", e)
+    sys.exit(1)
+
+def checksum_of(serialized):
+    for part in serialized.split("|"):
+        if part.startswith("checksum="):
+            return part.split("=", 1)[1]
+    return None
+
+ok = True
+try:
+    s_a = codec.serialize({"id": "42"})
+    s_b = codec.serialize({"id": "43"})
+    c_a = checksum_of(s_a)
+    c_b = checksum_of(s_b)
+    if c_a is None or c_b is None:
+        print("no checksum= field found in serialized output")
+        ok = False
+    elif c_a == c_b:
+        print(f"checksum did not change when record content changed ({c_a!r} both times) -- looks constant")
+        ok = False
+
+    s_a_again = codec.serialize({"id": "42"})
+    c_a_again = checksum_of(s_a_again)
+    if c_a_again != c_a:
+        print(f"checksum not stable across identical calls: {c_a!r} vs {c_a_again!r}")
+        ok = False
+except Exception as e:
+    print("checksum probe raised:", e)
+    ok = False
+
+sys.exit(0 if ok else 1)
+PYEOF
+
 SECONDS=0
 handoff "$WORK/two-file-consistency" \
   "test_codec.py is failing. Make it pass by having serialize() in codec.py compute and include a checksum field automatically in the serialized output, and deserialize() round-trip it back out. This is a record-format change, so also bump SCHEMA_VERSION in schema.py to reflect it. Do NOT modify test_codec.py." \
   "$WORK/logs/two-file-consistency.log"
 check two-file-consistency "$SECONDS" \
-  "python3 -m unittest test_codec && git diff HEAD --name-only | grep -qx schema.py && git diff HEAD --name-only | grep -qx codec.py" \
+  "python3 -m unittest test_codec && git diff HEAD --name-only | grep -qx schema.py && git diff HEAD --name-only | grep -qx codec.py && (cd '$WORK/two-file-consistency' && python3 - < '$WORK/checks/two-file-consistency.py')" \
   "$WORK/logs/two-file-consistency.log" "$WORK/two-file-consistency" test_codec.py
 fi
 

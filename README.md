@@ -67,22 +67,24 @@ One run of the 10-scenario benchmark in this repo, one Codex call each, no retri
 
 | scenario | result | time |
 |---|---|---|
-| stub-fn — implement a stubbed function against given tests | pass | 33s |
-| logic-bug — fix a wrong even-length median | pass | 25s |
-| flag-and-docs — add a CLI flag and document it | pass | 35s |
-| write-tests — add validation and write tests for it | pass | 34s |
-| refactor-no-regression — extract duplicated logic, keep behaviour | pass | 36s |
-| cross-file-trace — bug lives in a file the failing test never imports | pass | 56s |
-| finish-class — implement two methods from a docstring contract | pass | 27s |
-| mutable-default — fix a leaking mutable default argument | pass | 28s |
-| two-file-consistency — two files must change together | pass | 31s |
-| spec-only — implement from prose, no tests given | pass | 36s |
+| stub-fn — implement a stubbed function against given tests | pass | 28s |
+| logic-bug — fix a wrong even-length median | pass | 29s |
+| flag-and-docs — add a CLI flag and document it | pass | 38s |
+| write-tests — add validation and write tests for it | pass | 39s |
+| refactor-no-regression — extract duplicated logic, keep behaviour | pass | 41s |
+| cross-file-trace — bug lives in a file the failing test never imports | pass | 63s |
+| finish-class — implement two methods from a docstring contract | pass | 33s |
+| mutable-default — fix a leaking mutable default argument | pass | 26s |
+| two-file-consistency — two files must change together | pass | 33s |
+| spec-only — implement from prose, no tests given | pass | 49s |
 
-**10 of 10, median 33.5 seconds.** A perfect score deserves suspicion, so here is exactly how it was produced.
+**10 of 10, median 35.5 seconds.** A perfect score deserves suspicion, so here is exactly how it was produced — and how it kept being checked.
 
-An earlier run scored 9 of 10. Since then the checks got **stricter, not looser.** A reviewer pointed out that running the tests after Codex finishes can be satisfied by editing the test, so every scenario that tells Codex not to touch a given file now also fails if that file differs from the baseline commit by a single byte, before the functional check runs at all. That guard covers seven of the ten scenarios and did not fire on any of them. The `write-tests` check also now requires the exact exception type the task asks for, rather than accepting any exception.
+An earlier run scored 9 of 10. Since then the checks have gone through three rounds of adversarial review, each one making the checks **stricter, not looser.** Round one: every scenario that tells Codex not to touch a given file now also fails if that file differs from the baseline commit by a single byte, before the functional check runs at all — that guard covers seven of the ten scenarios and has not fired on any of them. Round one also tightened `write-tests` to require the exact exception type the task asks for, rather than accepting any exception.
 
-The earlier failure was a bug in the check, not in Codex's work: the task never said which test framework to use, Codex wrote valid pytest-style tests, and the check only ran `unittest`. The task now names `unittest`, which does make that one scenario less ambiguous than it was. The guard has one gap worth knowing: a promise like "do not modify this *function*" can't be enforced by a file-level diff when Codex has to edit the rest of that file.
+Round two closed two more holes, both about accepting the appearance of coverage instead of the real thing. `write-tests` used to accept any test file that merely contained the string `parse_port` — a one-line smoke test would have scored a pass even with zero coverage of the required cases (non-integer input, out-of-range in both directions). It now proves coverage by mutation testing: it runs Codex's delivered test file against four deliberately-broken drop-in implementations of the function, each one isolated in its own temp directory, and requires the suite to fail against every one of them. `two-file-consistency` used to accept a constant checksum like `checksum=0` on every record, because the test it hands to Codex only checks that a `checksum=` field exists and survives a round-trip. The check now imports Codex's delivered code directly and asserts the checksum actually changes when the record's content changes, and stays stable when it doesn't. Neither new guard fired in this run — independently confirmed by re-running both checks standalone against the delivered files and reading the delivered `port.py`/`test_port.py` and `codec.py` by hand.
+
+The earlier (9/10) failure was a bug in the check, not in Codex's work: the task never said which test framework to use, Codex wrote valid pytest-style tests, and the check only ran `unittest`. The task now names `unittest`, which does make that one scenario less ambiguous than it was. The guards have one gap worth knowing: a promise like "do not modify this *function*" can't be enforced by a file-level diff when Codex has to edit the rest of that file, and the mutation tests only cover the specific behaviours the task calls out by name (valid port, non-integer, too low, too high) — they are not a general substitute for a real coverage tool.
 
 Reproduce it yourself:
 

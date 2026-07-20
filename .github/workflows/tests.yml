@@ -1,0 +1,45 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # No install step on purpose: this kit is stdlib-only, and CI proves it.
+
+      - name: Unit tests
+        # test_invoker_integration.py is excluded here: it calls the real Codex
+        # CLI, which needs credentials and quota that CI does not have.
+        run: python3 -m unittest discover -s codex-handoff/tests -p "test_core.py" -v
+
+      - name: Modules compile
+        run: |
+          python3 -c "import py_compile; [py_compile.compile(f, doraise=True) for f in ['codex-handoff/handoff_core.py','codex-handoff/codex_handoff.py']]; print('compile OK')"
+
+      - name: Example scripts parse
+        run: |
+          bash -n codex-handoff/examples/try-it.sh
+          bash -n codex-handoff/examples/benchmark.sh
+
+      - name: Hook snippet is valid JSON
+        run: python3 -c "import json; json.load(open('codex-handoff/hooks/settings-snippet.json')); print('valid JSON')"
+
+      - name: Guard hook runs and fails open
+        # Feed it a malformed payload; it must still emit an allow decision
+        # rather than crash, because a broken guard must never block real work.
+        run: |
+          echo 'not json' | python3 model-routing/hooks/subagent-model-guard.py | tee /dev/stderr | grep -q '"permissionDecision": "allow"'
+          echo '{"tool_name":"Agent","tool_input":{"subagent_type":"general-purpose"}}' \
+            | python3 model-routing/hooks/subagent-model-guard.py | grep -q '"permissionDecision": "deny"'
+          echo '{"tool_name":"Agent","tool_input":{"subagent_type":"general-purpose","model":"sonnet"}}' \
+            | python3 model-routing/hooks/subagent-model-guard.py | grep -q '"permissionDecision": "allow"'

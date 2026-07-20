@@ -39,6 +39,11 @@ mkdir -p ~/.claude/hooks && cp model-routing/hooks/subagent-model-guard.py ~/.cl
 cp -R codex-handoff ~/.claude/codex-handoff
 ```
 
+> [!IMPORTANT]
+> Steps 3 and 4 copy files; they do not switch anything on. A hook only runs once it is registered in `~/.claude/settings.json`. Copy the guard-hook block from [model-routing/README.md](model-routing/README.md) and the codex-handoff block from [codex-handoff/hooks/settings-snippet.json](codex-handoff/hooks/settings-snippet.json) into that file. Until you do, the model guard is not protecting anything.
+>
+> Steps 1 and 2 take effect as soon as the files are in place. codex-handoff's manual command below also works with no hook registered — the hooks only add automatic detection and the next-session pickup.
+
 Try the handoff without running anything. This only prints what would be sent:
 
 ```bash
@@ -62,18 +67,22 @@ One run of the 10-scenario benchmark in this repo, one Codex call each, no retri
 
 | scenario | result | time |
 |---|---|---|
-| stub-fn — implement a stubbed function against given tests | pass | 31s |
-| logic-bug — fix a wrong even-length median | pass | 32s |
-| flag-and-docs — add a CLI flag and document it | pass | 52s |
-| write-tests — add validation and write tests for it | fail | 49s |
-| refactor-no-regression — extract duplicated logic, keep behaviour | pass | 62s |
-| cross-file-trace — bug lives in a file the failing test never imports | pass | 40s |
-| finish-class — implement two methods from a docstring contract | pass | 30s |
-| mutable-default — fix a leaking mutable default argument | pass | 38s |
-| two-file-consistency — two files must change together | pass | 62s |
-| spec-only — implement from prose, no tests given | pass | 35s |
+| stub-fn — implement a stubbed function against given tests | pass | 33s |
+| logic-bug — fix a wrong even-length median | pass | 25s |
+| flag-and-docs — add a CLI flag and document it | pass | 35s |
+| write-tests — add validation and write tests for it | pass | 34s |
+| refactor-no-regression — extract duplicated logic, keep behaviour | pass | 36s |
+| cross-file-trace — bug lives in a file the failing test never imports | pass | 56s |
+| finish-class — implement two methods from a docstring contract | pass | 27s |
+| mutable-default — fix a leaking mutable default argument | pass | 28s |
+| two-file-consistency — two files must change together | pass | 31s |
+| spec-only — implement from prose, no tests given | pass | 36s |
 
-**9 of 10, median 39 seconds.** The one failure was this repo's check script rather than Codex: the task never said which test framework to use, Codex wrote valid pytest-style tests, and the check only ran `unittest`. The check accepts either now, so your run may score differently. Published as measured instead of re-scored after the fact.
+**10 of 10, median 33.5 seconds.** A perfect score deserves suspicion, so here is exactly how it was produced.
+
+An earlier run scored 9 of 10. Since then the checks got **stricter, not looser.** A reviewer pointed out that running the tests after Codex finishes can be satisfied by editing the test, so every scenario that tells Codex not to touch a given file now also fails if that file differs from the baseline commit by a single byte, before the functional check runs at all. That guard covers seven of the ten scenarios and did not fire on any of them. The `write-tests` check also now requires the exact exception type the task asks for, rather than accepting any exception.
+
+The earlier failure was a bug in the check, not in Codex's work: the task never said which test framework to use, Codex wrote valid pytest-style tests, and the check only ran `unittest`. The task now names `unittest`, which does make that one scenario less ambiguous than it was. The guard has one gap worth knowing: a promise like "do not modify this *function*" can't be enforced by a file-level diff when Codex has to edit the rest of that file.
 
 Reproduce it yourself:
 

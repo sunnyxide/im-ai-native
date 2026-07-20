@@ -39,6 +39,11 @@ mkdir -p ~/.claude/hooks && cp model-routing/hooks/subagent-model-guard.py ~/.cl
 cp -R codex-handoff ~/.claude/codex-handoff
 ```
 
+> [!IMPORTANT]
+> 3번과 4번은 파일만 복사할 뿐 아무것도 켜지 않습니다. 훅은 `~/.claude/settings.json`에 등록해야 비로소 동작합니다. 가드 훅 블록은 [model-routing/README.md](model-routing/README.md)에서, codex-handoff 블록은 [codex-handoff/hooks/settings-snippet.json](codex-handoff/hooks/settings-snippet.json)에서 가져다 그 파일에 넣으세요. 등록 전까지 모델 가드는 아무것도 막아주지 않습니다.
+>
+> 1번과 2번은 파일만 있으면 바로 적용됩니다. 아래 codex-handoff 수동 명령도 훅 등록 없이 동작합니다. 훅은 자동 감지와 다음 세션 이어받기만 더해주는 것입니다.
+
 아무것도 실행하지 않고 핸드오프를 확인하려면. 무엇이 넘어갈지 출력만 합니다.
 
 ```bash
@@ -62,18 +67,22 @@ python3 ~/.claude/codex-handoff/codex_handoff.py now --dry-run --repo . --task "
 
 | 시나리오 | 결과 | 시간 |
 |---|---|---|
-| stub-fn — 주어진 테스트에 맞춰 빈 함수 구현 | 통과 | 31s |
-| logic-bug — 짝수 길이에서 틀린 중앙값 수정 | 통과 | 32s |
-| flag-and-docs — CLI 플래그 추가하고 문서화 | 통과 | 52s |
-| write-tests — 검증 로직 추가하고 그 테스트까지 작성 | 실패 | 49s |
-| refactor-no-regression — 중복 로직 추출, 동작은 유지 | 통과 | 62s |
-| cross-file-trace — 실패한 테스트가 직접 import하지 않는 파일에 버그 | 통과 | 40s |
-| finish-class — docstring 계약만 보고 메서드 2개 구현 | 통과 | 30s |
-| mutable-default — 상태가 새는 가변 기본 인자 수정 | 통과 | 38s |
-| two-file-consistency — 두 파일을 함께 고쳐야 통과 | 통과 | 62s |
-| spec-only — 테스트 없이 산문 명세만 보고 구현 | 통과 | 35s |
+| stub-fn — 주어진 테스트에 맞춰 빈 함수 구현 | 통과 | 33s |
+| logic-bug — 짝수 길이에서 틀린 중앙값 수정 | 통과 | 25s |
+| flag-and-docs — CLI 플래그 추가하고 문서화 | 통과 | 35s |
+| write-tests — 검증 로직 추가하고 그 테스트까지 작성 | 통과 | 34s |
+| refactor-no-regression — 중복 로직 추출, 동작은 유지 | 통과 | 36s |
+| cross-file-trace — 실패한 테스트가 직접 import하지 않는 파일에 버그 | 통과 | 56s |
+| finish-class — docstring 계약만 보고 메서드 2개 구현 | 통과 | 27s |
+| mutable-default — 상태가 새는 가변 기본 인자 수정 | 통과 | 28s |
+| two-file-consistency — 두 파일을 함께 고쳐야 통과 | 통과 | 31s |
+| spec-only — 테스트 없이 산문 명세만 보고 구현 | 통과 | 36s |
 
-**10개 중 9개, 중앙값 39초.** 유일한 실패는 Codex가 아니라 이 레포의 채점 스크립트 때문이었습니다. 과제문에 테스트 프레임워크를 지정하지 않았고 Codex는 pytest 스타일로 제대로 작성했는데, 채점기가 `unittest`만 돌렸습니다. 지금은 어느 쪽이든 인정하도록 고쳤으니 직접 돌리면 점수가 다를 수 있습니다. 사후에 다시 채점하지 않고 측정된 그대로 싣습니다.
+**10개 중 10개, 중앙값 33.5초.** 만점은 의심받아 마땅하니, 이 숫자가 어떻게 나왔는지 그대로 적습니다.
+
+앞선 실행에서는 10개 중 9개였습니다. 그 뒤로 검사는 **느슨해진 게 아니라 더 엄격해졌습니다.** Codex가 끝난 뒤의 테스트를 그냥 돌리는 검사는 테스트를 고쳐서도 통과시킬 수 있다는 지적을 받아, 이제 "이 파일은 건드리지 말라"고 한 시나리오는 그 파일이 baseline 커밋과 1바이트라도 다르면 기능 검사를 돌리기도 전에 실패 처리합니다. 이 가드는 10개 중 7개에 적용되고, 이번 실행에서 **한 번도 발동하지 않았습니다.** `write-tests` 검사도 아무 예외나 받아주던 것을 과제가 요구한 예외 타입만 인정하도록 조였습니다.
+
+앞선 실패는 Codex의 작업이 아니라 채점기의 버그였습니다. 과제문에 테스트 프레임워크를 지정하지 않았고 Codex는 pytest 스타일로 제대로 작성했는데 채점기가 `unittest`만 돌렸습니다. 지금은 과제문이 `unittest`를 명시하므로, 그 시나리오 하나는 예전보다 덜 모호해진 것도 사실입니다. 가드에는 알아둘 만한 빈틈이 하나 있습니다. Codex가 나머지를 고쳐야 하는 파일 안에서 "이 *함수*는 건드리지 말라"고 한 약속은 파일 단위 diff로 강제할 수 없습니다.
 
 직접 재현하려면.
 

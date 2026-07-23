@@ -4,11 +4,21 @@ Claude Code 답변을 제대로 이해하고, 사용량 한도가 조용히 새�
 
 [![MIT license](https://img.shields.io/github/license/sunnyxide/im-ai-native)](LICENSE) [![tests](https://github.com/sunnyxide/im-ai-native/actions/workflows/tests.yml/badge.svg)](https://github.com/sunnyxide/im-ai-native/actions/workflows/tests.yml)
 
-저는 10년치 레거시 소프트웨어 엔지니어링이 아니라 에이전틱 코딩으로 개발을 시작했습니다. 그래서 Claude Code의 답변을 반쯤 아는 외국어 읽듯이 읽어왔습니다 — 플래그나 git 관용구를 모양은 알아보지만 실제로 뜯어본 적은 없었죠. 놓친 20%는 계속 기술부채가 되어 돌아왔습니다. 그리고 별개로, 작업 도중 사용량 한도에 걸리면 모든 게 그냥 멈췄습니다.
+Claude Code 답변의 약 80%는 따라갈 수 있었습니다. 놓친 20%는 나중에 작업으로 돌아왔을 때 계속 기술부채가 되었습니다.
 
-이 킷은 그 두 구멍을 메웁니다. **[i-have-adhd](https://github.com/ayghri/i-have-adhd)**와 같은 발상을, 다른 결핍에 적용했습니다 — 자세한 출처는 [Credits](#credits)에.
+이건 제 작업 방식에 맞춘 개인적인 튜닝입니다. 답변은 간결하게, 대신 다시 작업을 이어갈 때 필요한 판단 근거와 제약, 맥락은 남기도록 했습니다.
+
+[i-have-adhd](https://github.com/ayghri/i-have-adhd)에서 영감을 받았습니다. 답 먼저 말하는 방식은 가져오고, 제 작업 방식에 맞지 않았던 부분은 조정했습니다. 출처는 [Credits](#credits)에 모두 남겼습니다.
 
 의존성 없음. Python 3.12 표준 라이브러리와 마크다운만, MIT 라이선스. &nbsp;·&nbsp; [English README](README.md)
+
+## 뭐가 달라지나
+
+![im-ai-native 보이스 규칙 전후의 같은 답변](docs/before-after.png)
+
+두 답변 다 같은 정보를 담고 있습니다. 차이는 `|| true`와 `--ignore-glob`이 뭘 하는지 이미 알고 있어야 하느냐입니다.
+
+## 실제 핸드오프
 
 ![Claude 사용량 한도에 걸린 뒤 codex-handoff가 작업을 마무리하는 장면](docs/demo.gif)
 
@@ -49,12 +59,6 @@ python3 ~/.claude/codex-handoff/codex_handoff.py now --dry-run --repo . --task "
 - 질문한 언어로, 메시지마다 답합니다
 - 모델을 지정하지 않은 백그라운드 서브에이전트가 조용히 비싼 모델을 물려받는 걸 막습니다
 - 사용량 한도에 걸리면 멈추는 대신 남은 작업을 Codex에 넘깁니다
-
-## 뭐가 달라지나
-
-![im-ai-native 보이스 규칙 전후의 같은 답변](docs/before-after.png)
-
-두 답변 다 같은 정보를 담고 있습니다. 차이는 `|| true`와 `--ignore-glob`이 뭘 하는지 이미 알고 있어야 하느냐입니다.
 
 ## 규칙
 

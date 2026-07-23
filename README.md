@@ -4,11 +4,21 @@ Claude Code output you actually understand, a usage cap that doesn't quietly van
 
 [![MIT license](https://img.shields.io/github/license/sunnyxide/im-ai-native)](LICENSE) [![tests](https://github.com/sunnyxide/im-ai-native/actions/workflows/tests.yml/badge.svg)](https://github.com/sunnyxide/im-ai-native/actions/workflows/tests.yml)
 
-I build through agentic coding, not ten years of legacy software engineering, and I was reading Claude Code's replies at maybe 80% comprehension — recognizing a flag or a git idiom without ever actually parsing it. The missing 20% kept turning into technical debt. Separately, the usage limit would hit mid-task and everything would stop.
+I could follow about 80% of Claude Code's output. The missing 20% kept becoming technical debt when I returned to a task later.
 
-This closes both gaps. Same idea as **[i-have-adhd](https://github.com/ayghri/i-have-adhd)**, aimed at a different one — full credit under [Credits](#credits).
+This is my personal workflow tuning: concise answers that still preserve the reasoning, constraints, and context needed to resume work.
+
+Inspired by [i-have-adhd](https://github.com/ayghri/i-have-adhd): I kept its answer-first idea, then tuned the parts that did not fit my workflow. Full credit under [Credits](#credits).
 
 No dependencies. Python 3.12 stdlib and markdown, MIT licensed. &nbsp;·&nbsp; [한국어 README](README.ko.md)
+
+## What changes
+
+![Same reply, before and after the im-ai-native voice rule](docs/before-after.png)
+
+Same underlying information both times. The difference is whether you already have to know what `|| true` and `--ignore-glob` do.
+
+## A real handoff
 
 ![codex-handoff finishing a task after the Claude usage limit hit](docs/demo.gif)
 
@@ -49,12 +59,6 @@ python3 ~/.claude/codex-handoff/codex_handoff.py now --dry-run --repo . --task "
 - Answers in the language you asked the question in, every message
 - Refuses to spawn a background subagent that silently inherits an expensive model
 - Hands unfinished work to Codex when your usage limit hits, instead of just stopping
-
-## What changes
-
-![Same reply, before and after the im-ai-native voice rule](docs/before-after.png)
-
-Same underlying information both times. The difference is whether you already have to know what `|| true` and `--ignore-glob` do.
 
 ## The rules
 
